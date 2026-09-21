@@ -1,0 +1,11 @@
+{
+  "name": "sift",
+  "version": "0.0.1",
+  "description": "Chrome extension: ask questions about the page you're on, backed by Nebius Token Factory (NVIDIA Nemotron) with a Tavily site-scoped search fallback.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test:nebius": "node --env-file=.env scripts/test-nebius.mjs"
+  }
+}
