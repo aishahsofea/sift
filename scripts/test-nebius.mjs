@@ -71,8 +71,11 @@ const choice = result.choices[0];
 console.log("--- raw message object ---");
 console.log(JSON.stringify(choice.message, null, 2));
 
-if (choice.message.reasoning_content) {
-  console.log("\n(!) This model splits output into reasoning_content vs content.");
-  console.log("reasoning_content:", choice.message.reasoning_content);
+// Field name varies by model/wrapper — Nebius's Nemotron Nano returns
+// `reasoning`, not the `reasoning_content` some OpenAI-compatible wrappers use.
+const reasoning = choice.message.reasoning_content ?? choice.message.reasoning;
+if (reasoning) {
+  console.log("\n(!) This model splits output into a separate reasoning field.");
+  console.log("reasoning:", reasoning);
 }
 console.log("\ncontent:", choice.message.content);
