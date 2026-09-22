@@ -1,3 +1,4 @@
+import { withRetry } from '../../shared/withRetry'
 import { scopeToDomain } from './scopeToDomain'
 
 const TAVILY_BASE_URL = 'https://api.tavily.com'
@@ -14,7 +15,7 @@ export async function searchTavily(
   pageUrl: string,
   pageTitle: string,
 ): Promise<TavilySearchResult[]> {
-  const res = await fetch(`${TAVILY_BASE_URL}/search`, {
+  const res = await withRetry(`${TAVILY_BASE_URL}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

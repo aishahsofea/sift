@@ -1,5 +1,6 @@
 import { NEBIUS_BASE_URL } from '../../shared/constants'
 import type { PageGroundedResult } from '../../shared/types'
+import { withRetry } from '../../shared/withRetry'
 import { resolveNemotronModel } from './modelDiscovery'
 import type { ChatMessage } from './promptAssembly'
 import { PAGE_GROUNDED_RESPONSE_FORMAT, parsePageGroundedResult } from './schema'
@@ -7,7 +8,7 @@ import { PAGE_GROUNDED_RESPONSE_FORMAT, parsePageGroundedResult } from './schema
 export async function askPageGrounded(apiKey: string, messages: ChatMessage[]): Promise<PageGroundedResult> {
   const model = await resolveNemotronModel(apiKey)
 
-  const res = await fetch(`${NEBIUS_BASE_URL}/chat/completions`, {
+  const res = await withRetry(`${NEBIUS_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -47,7 +48,7 @@ export async function streamFallbackAnswer(
 ): Promise<string> {
   const model = await resolveNemotronModel(apiKey)
 
-  const res = await fetch(`${NEBIUS_BASE_URL}/chat/completions`, {
+  const res = await withRetry(`${NEBIUS_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

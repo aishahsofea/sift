@@ -16,4 +16,9 @@ export default defineManifest({
   side_panel: { default_path: 'src/sidepanel/index.html' },
   options_page: 'src/options/index.html',
   action: { default_title: 'Sift' },
+  icons: {
+    16: 'public/icons/16.png',
+    48: 'public/icons/48.png',
+    128: 'public/icons/128.png',
+  },
 })
