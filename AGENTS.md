@@ -36,6 +36,8 @@ script, background, or popup) — just a Day-1 API sanity script.
 
 ## Conventions
 
+- Work on feature branches, not `main`. Branch per feature/fix (e.g.
+  `feature/markdown-message-rendering`), open a PR into `main` when done.
 - ESM only (`"type": "module"` in package.json).
 - Scripts read secrets from `process.env` via Node's `--env-file` flag —
   no `dotenv` dependency.
