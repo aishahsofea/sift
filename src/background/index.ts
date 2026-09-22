@@ -1,5 +1,8 @@
 import type { BackgroundRequest, BackgroundResponse } from '../shared/messages'
+import { askQuestion } from './handlers/askQuestion'
 import { extractPage } from './handlers/extractPage'
+import { clearHistory, getHistory } from './history/sessionHistory'
+import { getApiKeys } from './keys'
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
@@ -8,20 +11,60 @@ chrome.sidePanel
 // Registered at the top level (not inside an async function) so a revived
 // service worker re-attaches this listener before Chrome dispatches a queued event.
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
-  if (message.type === 'EXTRACT_PAGE') {
-    extractPage(message.tabId)
-      .then(sendResponse)
-      .catch((error) => {
+  switch (message.type) {
+    case 'EXTRACT_PAGE':
+      extractPage(message.tabId)
+        .then(sendResponse)
+        .catch((error) => {
+          const response: BackgroundResponse = {
+            type: 'EXTRACT_PAGE_RESULT',
+            ok: false,
+            reason: 'unknown-error',
+            message: error instanceof Error ? error.message : 'Unknown error extracting page.',
+          }
+          sendResponse(response)
+        })
+      return true
+
+    case 'ASK_QUESTION':
+      askQuestion(message.tabId, message.question)
+        .then(sendResponse)
+        .catch((error) => {
+          const response: BackgroundResponse = {
+            type: 'ASK_QUESTION_RESULT',
+            ok: false,
+            message: error instanceof Error ? error.message : 'Unknown error asking question.',
+          }
+          sendResponse(response)
+        })
+      return true
+
+    case 'GET_HISTORY':
+      getHistory(message.tabId).then((turns) => {
+        const response: BackgroundResponse = { type: 'HISTORY_RESULT', turns }
+        sendResponse(response)
+      })
+      return true
+
+    case 'CLEAR_HISTORY':
+      clearHistory(message.tabId).then(() => {
+        const response: BackgroundResponse = { type: 'CLEARED' }
+        sendResponse(response)
+      })
+      return true
+
+    case 'GET_API_KEY_STATUS':
+      getApiKeys().then(({ nebiusApiKey, tavilyApiKey }) => {
         const response: BackgroundResponse = {
-          type: 'EXTRACT_PAGE_RESULT',
-          ok: false,
-          reason: 'unknown-error',
-          message: error instanceof Error ? error.message : 'Unknown error extracting page.',
+          type: 'API_KEY_STATUS',
+          nebiusConfigured: Boolean(nebiusApiKey),
+          tavilyConfigured: Boolean(tavilyApiKey),
         }
         sendResponse(response)
       })
-    return true
-  }
+      return true
 
-  return undefined
+    default:
+      return undefined
+  }
 })
