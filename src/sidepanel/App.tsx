@@ -10,7 +10,7 @@ import { useChat } from './hooks/useChat'
 
 export default function App() {
   const { tabId, status } = useActiveTab()
-  const { turns, pending, error, ask, clear } = useChat(tabId)
+  const { turns, pending, fallbackActive, error, ask, clear } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function App() {
               {error}
             </p>
           )}
-          <ChatInput onSend={ask} disabled={pending} />
+          <ChatInput onSend={ask} disabled={pending || fallbackActive} />
         </>
       )}
     </main>

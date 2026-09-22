@@ -28,10 +28,16 @@ export async function askQuestion(tabId: number, question: string): Promise<Back
 
   try {
     const result = await askPageGrounded(nebiusApiKey, messages)
-    await appendHistoryTurns(tabId, [
-      { role: 'user', content: question },
-      { role: 'assistant', content: result.answer, source: 'page' },
-    ])
+    // Only record page-grounded turns here. When found_in_page is false the
+    // Tavily fallback pass owns this Q&A pair and appends it once it has a
+    // real answer — appending here too would duplicate the question and leave
+    // a "not covered on page" filler turn poisoning later prompt history.
+    if (result.found_in_page) {
+      await appendHistoryTurns(tabId, [
+        { role: 'user', content: question },
+        { role: 'assistant', content: result.answer, source: 'page' },
+      ])
+    }
     return { type: 'ASK_QUESTION_RESULT', ok: true, result }
   } catch (error) {
     console.error(`[Sift] askQuestion failed for tab ${tabId}:`, error)

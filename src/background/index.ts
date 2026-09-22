@@ -1,12 +1,22 @@
-import type { BackgroundRequest, BackgroundResponse } from '../shared/messages'
+import { FALLBACK_PORT_NAME, type BackgroundRequest, type BackgroundResponse, type FallbackPortRequest } from '../shared/messages'
 import { askQuestion } from './handlers/askQuestion'
 import { extractPage } from './handlers/extractPage'
+import { runTavilyFallback } from './handlers/tavilyFallback'
 import { clearHistory, getHistory } from './history/sessionHistory'
 import { getApiKeys } from './keys'
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error('Failed to set side panel behavior', error))
+
+// Registered at the top level, same reasoning as the onMessage listener below.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== FALLBACK_PORT_NAME) return
+  port.onMessage.addListener((message: FallbackPortRequest) => {
+    if (message.type !== 'START_FALLBACK') return
+    runTavilyFallback(port, message.tabId, message.question)
+  })
+})
 
 // Registered at the top level (not inside an async function) so a revived
 // service worker re-attaches this listener before Chrome dispatches a queued event.
