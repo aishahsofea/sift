@@ -110,11 +110,12 @@ export default defineManifest({
   name: 'Sift',
   version: pkg.version,
   description: "Ask questions about the page you're on.",
-  permissions: ['sidePanel', 'storage', 'activeTab', 'scripting'],
-  host_permissions: [
-    'https://api.tokenfactory.nebius.com/*',
-    'https://api.tavily.com/*',
-  ],
+  // Broad host_permissions, not activeTab (revised during Phase 2 — see permission
+  // gotcha #2 below): activeTab does not reliably re-grant when the toolbar icon is
+  // clicked while the side panel is already open, which breaks extraction on ordinary
+  // tab switches, not just cross-origin navigation.
+  permissions: ['sidePanel', 'storage', 'scripting'],
+  host_permissions: ['http://*/*', 'https://*/*'],
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   side_panel: { default_path: 'src/sidepanel/index.html' },
   options_page: 'src/options/index.html',
@@ -203,21 +204,33 @@ plain `chrome.runtime.sendMessage`. Only the Tavily-fallback pass uses a
 unbounded sequence of chunks to relay; forcing the single-shot page-grounded
 call through a port would be unneeded ceremony.
 
-## Two permission gotchas that shape the design (verified against Chrome's docs)
+## Two permission gotchas that shape the design
 
-1. **`chrome.tabs.query()` never returns a populated `tab.url`** under this
-   permission set — `activeTab` alone does not unlock it (only bare `"tabs"`
-   permission or matching `host_permissions` do). Fix: `ExtractedPage.url` is
-   always sourced from the content script's own `document.URL`, never from
-   the Tabs API. `chrome.tabs.onActivated`/`onUpdated` still work fine for
-   detecting *when* to re-extract, since `tabId`/`changeInfo.status` are
-   unrestricted fields.
-2. **`activeTab`'s grant is revoked on navigation to a new origin.** If the
-   side panel stays open while the tab navigates to a different site without
-   the user re-clicking the extension icon, the next `executeScript` call can
-   fail with a permission error. This isn't a new failure mode to build for —
-   it naturally lands in the existing "can't read this page" state via the
-   `permission-denied` reason.
+1. **`chrome.tabs.query()` never returns a populated `tab.url`** under an
+   `activeTab`-only permission set — only bare `"tabs"` permission or matching
+   `host_permissions` unlock it. This is now moot for `tab.url` specifically,
+   since Phase 2's `host_permissions` fix (below) matches every http/https
+   origin — but `ExtractedPage.url` still comes from the content script's own
+   `document.URL`, not the Tabs API, since that's simpler than threading a
+   second source of truth through the code for no benefit. `chrome.tabs.onActivated`/
+   `onUpdated` still work fine for detecting *when* to re-extract, since
+   `tabId`/`changeInfo.status` are unrestricted fields.
+2. **`activeTab` does not reliably grant access the way the side panel needs
+   it to (found empirically in Phase 2, not just assumed from docs).** The
+   original assumption was narrower — that the grant is revoked on navigation
+   to a new origin while the panel stays open, landing harmlessly in the
+   `permission-denied` unreadable-page state. Real testing showed the problem
+   is bigger: once the side panel is open, clicking the toolbar icon again
+   does **not** reliably re-grant `activeTab` for the tab you're on — even an
+   explicit, deliberate re-click on the target tab still failed with
+   `executeScript`'s host-permission error. A persistent panel that reacts
+   live to tab switches doesn't fit the transient-popup model `activeTab` was
+   designed for. **Fix:** dropped `activeTab` entirely in favor of broad
+   `host_permissions` (`http://*/*`, `https://*/*` — see `manifest.config.ts`
+   above), so extraction no longer depends on click timing at all. The
+   `permission-denied` reason and unreadable-page fallback stay in place for
+   genuine cases (a tab closed mid-extraction, etc.), just not as the primary
+   path for ordinary tab switching.
 
 ## Phase-by-phase tasks
 
@@ -228,6 +241,10 @@ Create `manifest.config.ts`, `vite.config.ts`, `vite.content.config.ts`, `tsconf
 ### Phase 2 — Extraction pipeline
 Create `src/content/index.ts` (Readability on `document.cloneNode(true)` — `.parse()` is destructive to the document it's given — falling back to `document.body.innerText` when Readability returns null or `isProbablyReaderable()` is false), `src/shared/truncate.ts` + test (cap ~120,000 chars), `src/background/handlers/extractPage.ts` (`chrome.scripting.executeScript({files:['content-script.js']})`, correlate response via a listener scoped to `sender.tab.id`, ~5s timeout safety net, best-effort classification of rejection strings into `UnreadableReason`), `src/background/history/sessionHistory.ts` (caches `ExtractedPage` itself in `chrome.storage.session` too, so follow-ups don't re-extract every time), `src/sidepanel/components/UnreadablePageState.tsx`, `src/sidepanel/hooks/useActiveTab.ts`.
 **Done when**: a normal article shows extracted content reaching the background (verify via service-worker console log); a `chrome://` page or the PDF viewer shows the disabled "Can't read this page" state, not a raw error; a very long page is flagged `truncated: true` without crashing.
+
+**Two bugs found only by manually loading the unpacked extension and clicking through it, not by typecheck/tests/build:**
+- The `activeTab` permission gotcha above (permission gotcha #2) — fixed by switching to broad `host_permissions`.
+- **A message race in `extractPage.ts`:** `chrome.scripting.executeScript()`'s promise resolves once the injected script's *synchronous* top-level code finishes running — and the content script's `chrome.runtime.sendMessage(...)` call fires synchronously at the top level, without awaiting it. That means the response listener must be registered **before** calling `executeScript`, not after: registering it afterward (as first written) left a window where the content script's message could be dispatched — and silently dropped, since some listener already existed elsewhere (the top-level router) so Chrome resolved the sender's `sendMessage` promise cleanly anyway — before anything was listening for it, causing every extraction to hit the 5s timeout despite the content script visibly succeeding.
 
 ### Phase 3 — Core chat loop
 Create `src/background/nebius/{client,modelDiscovery,promptAssembly,schema}.ts` (+ tests for `promptAssembly` and `schema`), `src/background/keys.ts`, `src/background/handlers/askQuestion.ts`, chat UI components, `src/sidepanel/hooks/useChat.ts`. Modify `src/background/index.ts` to register `ASK_QUESTION`/`GET_HISTORY`/`CLEAR_HISTORY`/`GET_API_KEY_STATUS` — **register all listeners at the top level**, not inside an async function, so a revived service worker re-attaches them before Chrome dispatches a queued event.
@@ -259,8 +276,9 @@ Create the four unit-test files placed alongside their modules above, `src/share
 ## Known risks (ranked by concreteness)
 
 1. Node 20.16.0 → 22 LTS upgrade is a hard prerequisite, not optional (verified against Vite's actual `engines` field).
-2. `chrome.tabs.query().url` will silently be `undefined` under this permission set if anyone reaches for it out of habit — `ExtractedPage.url` from the content script is the only source of truth for the current URL.
-3. `activeTab` revocation on cross-origin navigation while the panel is open — a real, reachable path into the `permission-denied` unreadable-page state, not just CSP/chrome:// pages.
-4. `executeScript` rejection reasons are free-text strings — classification into `UnreadableReason` is necessarily best-effort substring matching.
+2. ~~`chrome.tabs.query().url` will silently be `undefined` under this permission set~~ — superseded: Phase 2 dropped `activeTab` for broad `host_permissions`, so `tab.url` would actually resolve now. `ExtractedPage.url` still comes from the content script's `document.URL` regardless, by design (see permission gotcha #1), not because the Tabs API is blocked.
+3. **(materialized in Phase 2, real fix applied)** `activeTab` turned out not to reliably grant access at all once the side panel is already open — not just revoked on cross-origin navigation as originally assumed, but never re-granted even on a deliberate re-click of the toolbar icon on the target tab. Fixed by switching to broad `host_permissions` (`http://*/*`, `https://*/*`) instead of depending on `activeTab` timing.
+4. `executeScript` rejection reasons are free-text strings — classification into `UnreadableReason` is necessarily best-effort substring matching. (Confirmed in Phase 2: Chrome uses the *same* message — "Cannot access contents of the page. Extension manifest must request permission to access the respective host." — for both a restricted `chrome://` page and an ungranted regular page, so this classifier alone can't always tell them apart; the `host_permissions` fix above removes the ungranted-regular-page case entirely rather than trying to disambiguate the string.)
 5. The content script's build living outside crxjs's manifest-driven graph (Chrome's own constraint, not a tooling gap) means two Vite configs and two dev watchers — accepted friction, not a bug to fix.
 6. SSE responses can split a single JSON payload across two stream reads (verified by reproducing it live) — the fallback parser must buffer trailing partial lines, not assume one `read()` = whole lines.
+7. **(found in Phase 2)** `chrome.scripting.executeScript()`'s promise resolves once the injected script's *synchronous* top-level code finishes — which can be before an `onMessage` listener registered *after* that call has a chance to attach, silently dropping the content script's response. The response listener must be registered before calling `executeScript`, not after.
