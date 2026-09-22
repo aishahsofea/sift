@@ -6,11 +6,12 @@ export default defineManifest({
   name: 'Sift',
   version: pkg.version,
   description: "Ask questions about the page you're on.",
-  permissions: ['sidePanel', 'storage', 'activeTab', 'scripting'],
-  host_permissions: [
-    'https://api.tokenfactory.nebius.com/*',
-    'https://api.tavily.com/*',
-  ],
+  // Broad host_permissions instead of activeTab: the side panel persists across tab
+  // switches, and re-clicking the toolbar icon while it's already open does not
+  // reliably re-grant activeTab for the newly active tab (verified empirically —
+  // executeScript fails with a host-permission error even on an explicit re-click).
+  permissions: ['sidePanel', 'storage', 'scripting'],
+  host_permissions: ['http://*/*', 'https://*/*'],
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   side_panel: { default_path: 'src/sidepanel/index.html' },
   options_page: 'src/options/index.html',

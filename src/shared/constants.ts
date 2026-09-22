@@ -1,0 +1,1 @@
+export const TRUNCATION_CHAR_LIMIT = 120_000

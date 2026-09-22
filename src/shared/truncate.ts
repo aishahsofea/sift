@@ -1,0 +1,13 @@
+import { TRUNCATION_CHAR_LIMIT } from './constants'
+
+export interface TruncateResult {
+  content: string
+  truncated: boolean
+}
+
+export function truncate(content: string, limit: number = TRUNCATION_CHAR_LIMIT): TruncateResult {
+  if (content.length <= limit) {
+    return { content, truncated: false }
+  }
+  return { content: content.slice(0, limit), truncated: true }
+}
