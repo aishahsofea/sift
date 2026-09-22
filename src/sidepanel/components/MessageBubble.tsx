@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown'
 import type { ChatTurn } from '../../shared/types'
 
 const SOURCE_LABELS: Record<NonNullable<ChatTurn['source']>, string> = {
@@ -9,7 +10,9 @@ export function MessageBubble({ turn }: { turn: ChatTurn }) {
   return (
     <div className={`message-bubble message-bubble-${turn.role}`}>
       {turn.source && <span className="message-bubble-source">{SOURCE_LABELS[turn.source]}</span>}
-      <p>{turn.content}</p>
+      <div className="message-bubble-content">
+        <ReactMarkdown>{turn.content}</ReactMarkdown>
+      </div>
     </div>
   )
 }

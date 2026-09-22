@@ -16,7 +16,8 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
