@@ -5,17 +5,28 @@ Guidance for AI coding agents working in this repo.
 ## Project
 
 Sift — Chrome extension. Reads the current page, answers questions about it.
-Answers come from page content first; falls back to a Tavily search scoped to
-the current site when the answer isn't on the page.
+The model works from the extracted page text and decides for itself when to
+reach for a Tavily search scoped to the current site.
 
 Backend: [Nebius Token Factory](https://tokenfactory.nebius.com), an NVIDIA
 Nemotron model.
 
-Status: early development. No extension code yet (no manifest, content
-script, background, or popup) — just a Day-1 API sanity script.
+Status: working extension, loadable unpacked from `dist/`. Manifest V3,
+React 19, Vite 8 + `@crxjs/vite-plugin`. The UI is a side panel (not a popup)
+plus an options page for API keys. The chat pipeline is a model-driven agent
+loop — the model decides when to search; see
+[ADR 0001](docs/adr/0001-model-driven-agent-loop.md).
 
 ## Commands
 
+- `npm run build` — two Vite builds (extension shell, then content script)
+  into `dist/`. They're separate because Chrome won't load ES modules in a
+  content script; see PLAN.md.
+- `npm run dev` — extension shell with HMR. `npm run dev:content` — content
+  script watcher, needs its own terminal. Run both during development.
+- `npm run typecheck` — `tsc --noEmit`.
+- `npm run test` — `vitest run`. Unit tests cover pure logic only; anything
+  touching `chrome.*` isn't tested here.
 - `npm run test:nebius` — sanity-checks the Nebius Token Factory + Nemotron
   round trip (lists available models, runs one chat completion). Requires
   `.env` with `NEBIUS_API_KEY`.
@@ -27,17 +38,31 @@ script, background, or popup) — just a Day-1 API sanity script.
 
 ## Environment
 
-- Copy `.env.example` to `.env` and fill in values.
-- `NEBIUS_API_KEY` — required, used for all Nebius Token Factory calls.
-- `TAVILY_API_KEY` — for the search fallback; not yet wired into any code.
+- Node `^20.19.0` or `>=22.12.0` (`.nvmrc` pins what this was built against).
+  Vite 8 fails on older Node 20.x with a confusing module-loading error.
+- The extension reads its keys from `chrome.storage.local`, entered through
+  the options page — see `src/background/keys.ts`. It never reads `.env`.
+- `.env` is only for the `scripts/` sanity checks. Copy `.env.example` and
+  fill in `NEBIUS_API_KEY`; `TAVILY_API_KEY` is there for future scripts,
+  nothing under `scripts/` calls Tavily yet.
 - `.env` is gitignored. Never commit real keys.
 
 ## Structure
 
+- `src/background/` — service worker. `handlers/` holds the agent loop and
+  page extraction, `nebius/` the client plus prompt assembly and tool schema,
+  `tavily/` the site-scoped search, `history/` per-tab session history.
+- `src/content/` — content script, extracts readable page text via
+  `@mozilla/readability`.
+- `src/sidepanel/` — React side panel (the main UI). `src/options/` — React
+  options page for API keys.
+- `src/shared/` — types, message contracts, storage keys, and constants
+  (`MAX_TOOL_ROUNDS`, truncation limits) used by both sides.
 - `scripts/` — standalone Node scripts (ESM), run via `node
-  --env-file=.env scripts/<name>.mjs`.
-- No `src/` yet — extension scaffolding (manifest.json, content script,
-  background/service worker, popup UI) hasn't been added.
+  --env-file=.env scripts/<name>.mjs`. Not part of the extension build.
+- `manifest.config.ts` — manifest generated at build time from
+  `package.json`. `vite.config.ts` builds the shell,
+  `vite.content.config.ts` the content script.
 
 ## Conventions
 
@@ -52,6 +77,25 @@ script, background, or popup) — just a Day-1 API sanity script.
 - Nebius chat responses may return reasoning/chain-of-thought under
   `message.reasoning` instead of the OpenAI-style `message.reasoning_content`,
   depending on model/wrapper — check both fields.
+
+## Issues
+
+Work gets tracked as GitHub issues in [aishahsofea/sift](https://github.com/aishahsofea/sift/issues),
+so the issue list doubles as the record of what's been done.
+
+- Open an issue **before** starting work that's significant — more than one
+  commit, changes behaviour a user would notice, adds a dependency, or is
+  something we'd want to find again in three months. Skip it for typos,
+  formatting, and one-line fixes.
+- If work starts small and grows, open the issue as soon as that's clear
+  rather than after the fact.
+- `gh issue create --title "..." --body "..." --label <label>`. Labels are the
+  GitHub defaults (`bug`, `enhancement`, `documentation`); add new ones only
+  when a batch of issues needs them.
+- The body says what and why, and how we'll know it's done. Link the relevant
+  ADR or PLAN.md row when one exists.
+- Name the branch after the issue's subject, then put `Closes #<n>` in the PR
+  body so merging closes the issue.
 
 ## Decisions
 
