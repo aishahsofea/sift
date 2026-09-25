@@ -12,10 +12,12 @@ export interface ChatTurn {
   source?: 'page' | 'web'
 }
 
-export interface PageGroundedResult {
-  found_in_page: boolean
-  answer: string
-}
+// What the agent loop is doing right now. Emitted per tool call, before the call
+// runs: drives the side panel and keeps the port busy so the MV3 service worker
+// doesn't go idle mid-search (ADR 0001).
+export type AgentStep =
+  | { kind: 'searching'; domain: string; query: string }
+  | { kind: 'reading'; url: string }
 
 export type UnreadableReason =
   | 'restricted-url'

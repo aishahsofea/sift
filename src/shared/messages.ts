@@ -1,8 +1,7 @@
-import type { ChatTurn, ExtractedPage, PageGroundedResult, UnreadableReason } from './types'
+import type { AgentStep, ChatTurn, ExtractedPage, UnreadableReason } from './types'
 
 export type BackgroundRequest =
   | { type: 'EXTRACT_PAGE'; tabId: number }
-  | { type: 'ASK_QUESTION'; tabId: number; question: string }
   | { type: 'GET_HISTORY'; tabId: number }
   | { type: 'CLEAR_HISTORY'; tabId: number }
   | { type: 'GET_API_KEY_STATUS' }
@@ -10,8 +9,6 @@ export type BackgroundRequest =
 export type BackgroundResponse =
   | { type: 'EXTRACT_PAGE_RESULT'; ok: true; page: ExtractedPage }
   | { type: 'EXTRACT_PAGE_RESULT'; ok: false; reason: UnreadableReason; message: string }
-  | { type: 'ASK_QUESTION_RESULT'; ok: true; result: PageGroundedResult }
-  | { type: 'ASK_QUESTION_RESULT'; ok: false; message: string }
   | { type: 'HISTORY_RESULT'; turns: ChatTurn[] }
   | { type: 'CLEARED' }
   | { type: 'API_KEY_STATUS'; nebiusConfigured: boolean; tavilyConfigured: boolean }
@@ -22,12 +19,15 @@ export type ContentScriptMessage =
   | { type: 'PAGE_EXTRACTED'; page: ExtractedPage }
   | { type: 'PAGE_EXTRACTION_FAILED'; reason: UnreadableReason; message: string }
 
-// streaming port protocol — Tavily-fallback pass ONLY, page-grounded pass never uses this
-export const FALLBACK_PORT_NAME = 'sift-fallback'
+// Every question runs over this port (ADR 0001): the loop can take several
+// rounds, and step events have to reach the panel while it does, which a
+// one-shot sendMessage response can't express.
+export const ASK_PORT_NAME = 'sift-ask'
 
-export type FallbackPortRequest = { type: 'START_FALLBACK'; tabId: number; question: string }
+export type AskPortRequest = { type: 'START_ASK'; tabId: number; question: string }
 
-export type FallbackPortMessage =
-  | { type: 'FALLBACK_CHUNK'; delta: string }
-  | { type: 'FALLBACK_DONE'; fullText: string }
-  | { type: 'FALLBACK_ERROR'; message: string }
+export type AskPortMessage =
+  | { type: 'ASK_STEP'; step: AgentStep }
+  | { type: 'ASK_CHUNK'; delta: string }
+  | { type: 'ASK_DONE'; fullText: string; source: NonNullable<ChatTurn['source']> }
+  | { type: 'ASK_ERROR'; message: string }

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../shared/messages'
 import { ChatInput } from './components/ChatInput'
 import { ChatThread } from './components/ChatThread'
-import { LoadingIndicator } from './components/LoadingIndicator'
 import { MissingApiKeysState } from './components/MissingApiKeysState'
 import { UnreadablePageState } from './components/UnreadablePageState'
 import { useActiveTab } from './hooks/useActiveTab'
@@ -10,7 +9,7 @@ import { useChat } from './hooks/useChat'
 
 export default function App() {
   const { tabId, status } = useActiveTab()
-  const { turns, pending, fallbackActive, error, ask, clear } = useChat(tabId)
+  const { turns, asking, error, ask, clear } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -40,13 +39,12 @@ export default function App() {
       {chatReady && (
         <>
           <ChatThread turns={turns} />
-          {pending && <LoadingIndicator />}
           {error && (
             <p role="alert" className="chat-error">
               {error}
             </p>
           )}
-          <ChatInput onSend={ask} disabled={pending || fallbackActive} />
+          <ChatInput onSend={ask} disabled={asking} />
         </>
       )}
     </main>

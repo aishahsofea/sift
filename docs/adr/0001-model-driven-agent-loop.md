@@ -82,18 +82,45 @@ passed on Nemotron 3 Nano:
   23,454 prompt tokens came back cached, and the first round dropped from 2.8s
   cold to 1.5s warm.
 
+The shipped code was then checked against the same endpoints on 2026-09-25, with
+a throwaway test driving [client.ts](../../src/background/nebius/client.ts) and
+[promptAssembly.ts](../../src/background/nebius/promptAssembly.ts) directly:
+
+- An on-page question answered with no tool call; an off-page one returned
+  exactly one `search_site` call whose streamed argument fragments parsed once
+  joined, with the query `Loomkit Pro cost per seat`.
+- On that tool round `content` came back as the empty string, because the client
+  swallows leading whitespace — so the whitespace-only delta never reaches the
+  panel or stored history.
+- A second round carrying a `role: "tool"` message answered from the tool result,
+  and the forced round (tools omitted + nudge) answered cleanly with no markup.
+- Tavily `/extract` returns the article under `results[0].raw_content`; a URL it
+  can't fetch comes back as `results: []` with the reason in `failed_results`,
+  which the handler turns into a recoverable tool error rather than a failure.
+
 ## Consequences
 
 - Call count is unchanged for the common cases (1 call on-page, 2 off-page).
   Cost only grows when the model refines, which the round cap bounds.
 - The SSE parser gains tool-call fragment joining on top of the existing
   partial-line buffering. Tool rounds also emit one whitespace-only content
-  delta, and answers start with `\n`; both need trimming in the UI.
+  delta, and answers start with `\n`. Both are swallowed in the client rather
+  than trimmed in the UI, so the streamed text and the stored turn agree.
 - Losing the strict schema loses the forced `found_in_page` decision, which was
   an accidental guard against answering from model knowledge. A small eval set
   (on-page, off-page, partial, follow-up) measuring tool-call rate and grounding
   replaces it, and doubles as evidence for the hackathon write-up.
 - [schema.ts](../../src/background/nebius/schema.ts) and its test shift from
   parsing a response envelope to parsing tool arguments.
-- Not yet implemented as of 2026-09-25: the Phase 3/4 code described above is
-  still what runs.
+- Implemented 2026-09-25 in
+  [agentLoop.ts](../../src/background/handlers/agentLoop.ts), which replaces both
+  `askQuestion.ts` and `tavilyFallback.ts`. `ASK_QUESTION` and the `sift-fallback`
+  port are gone; every question runs over the `sift-ask` port. Still unverified
+  inside Chrome itself: the loop has been exercised against the real APIs, but not
+  yet click-tested in the side panel on a live tab.
+- Not covered by this change: the eval set named above (on-page, off-page,
+  partial, follow-up) that was meant to replace the `found_in_page` guard. Until
+  it exists, nothing measures grounding or tool-call rate on real pages.
+- A page with no Tavily key configured degrades to one page-grounded round rather
+  than failing: the tools aren't sent, and the system prompt says so instead of
+  promising a search that can't happen.

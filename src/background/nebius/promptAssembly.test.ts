@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
-import type { TavilySearchResult } from '../tavily/client'
-import { assembleFallbackMessages, assemblePageGroundedMessages } from './promptAssembly'
+import { assembleAgentMessages } from './promptAssembly'
 
 const page: ExtractedPage = {
   url: 'https://example.com/article',
@@ -11,19 +10,44 @@ const page: ExtractedPage = {
   truncated: false,
 }
 
-describe('assemblePageGroundedMessages', () => {
+const withSearch = { searchEnabled: true }
+
+describe('assembleAgentMessages', () => {
   it('puts a system message with the page title, URL, and content first', () => {
-    const [system] = assemblePageGroundedMessages(page, [], 'When does it launch?')
+    const [system] = assembleAgentMessages(page, [], 'When does it launch?', withSearch)
     expect(system.role).toBe('system')
     expect(system.content).toContain(page.title)
     expect(system.content).toContain(page.url)
     expect(system.content).toContain(page.content)
   })
 
+  it('scopes the prompt to the page hostname', () => {
+    const [system] = assembleAgentMessages(page, [], 'When does it launch?', withSearch)
+    expect(system.content).toContain('example.com')
+  })
+
+  it('names both tools when search is available', () => {
+    const [system] = assembleAgentMessages(page, [], 'When does it launch?', withSearch)
+    expect(system.content).toContain('search_site')
+    expect(system.content).toContain('fetch_page')
+  })
+
+  it('promises no search when no Tavily key is configured', () => {
+    const [system] = assembleAgentMessages(page, [], 'When does it launch?', { searchEnabled: false })
+    expect(system.content).not.toContain('search_site')
+    expect(system.content).toContain('no search available')
+  })
+
+  it('keeps the page in the prompt regardless of search, so page and web can combine', () => {
+    const [enabled] = assembleAgentMessages(page, [], 'q', withSearch)
+    const [disabled] = assembleAgentMessages(page, [], 'q', { searchEnabled: false })
+    expect(enabled.content).toContain(page.content)
+    expect(disabled.content).toContain(page.content)
+  })
+
   it('appends the new question as the final user message', () => {
-    const messages = assemblePageGroundedMessages(page, [], 'When does it launch?')
-    const last = messages[messages.length - 1]
-    expect(last).toEqual({ role: 'user', content: 'When does it launch?' })
+    const messages = assembleAgentMessages(page, [], 'When does it launch?', withSearch)
+    expect(messages[messages.length - 1]).toEqual({ role: 'user', content: 'When does it launch?' })
   })
 
   it('preserves prior history in order between the system prompt and the new question', () => {
@@ -31,7 +55,7 @@ describe('assemblePageGroundedMessages', () => {
       { role: 'user', content: 'What is this page about?' },
       { role: 'assistant', content: 'A product launch.', source: 'page' },
     ]
-    const messages = assemblePageGroundedMessages(page, history, 'When does it launch?')
+    const messages = assembleAgentMessages(page, history, 'When does it launch?', withSearch)
 
     expect(messages).toEqual([
       { role: 'system', content: expect.any(String) },
@@ -43,48 +67,7 @@ describe('assemblePageGroundedMessages', () => {
 
   it('drops the source field from history turns since the API only accepts role/content', () => {
     const history: ChatTurn[] = [{ role: 'assistant', content: 'A product launch.', source: 'web' }]
-    const messages = assemblePageGroundedMessages(page, history, 'When?')
+    const messages = assembleAgentMessages(page, history, 'When?', withSearch)
     expect(messages[1]).not.toHaveProperty('source')
-  })
-})
-
-describe('assembleFallbackMessages', () => {
-  const results: TavilySearchResult[] = [
-    { title: 'Launch announced', url: 'https://example.com/news/launch', content: 'The launch date is March 3rd.' },
-  ]
-
-  it('puts a system message with the search results and scoped domain first', () => {
-    const [system] = assembleFallbackMessages(page, [], 'When does it launch?', results)
-    expect(system.role).toBe('system')
-    expect(system.content).toContain('example.com')
-    expect(system.content).toContain(results[0].title)
-    expect(system.content).toContain(results[0].url)
-    expect(system.content).toContain(results[0].content)
-  })
-
-  it('notes when there are no search results instead of omitting the section', () => {
-    const [system] = assembleFallbackMessages(page, [], 'When does it launch?', [])
-    expect(system.content).toContain('no results found')
-  })
-
-  it('appends the new question as the final user message', () => {
-    const messages = assembleFallbackMessages(page, [], 'When does it launch?', results)
-    const last = messages[messages.length - 1]
-    expect(last).toEqual({ role: 'user', content: 'When does it launch?' })
-  })
-
-  it('preserves prior history in order between the system prompt and the new question', () => {
-    const history: ChatTurn[] = [
-      { role: 'user', content: 'What is this page about?' },
-      { role: 'assistant', content: 'A product launch.', source: 'page' },
-    ]
-    const messages = assembleFallbackMessages(page, history, 'When does it launch?', results)
-
-    expect(messages).toEqual([
-      { role: 'system', content: expect.any(String) },
-      { role: 'user', content: 'What is this page about?' },
-      { role: 'assistant', content: 'A product launch.' },
-      { role: 'user', content: 'When does it launch?' },
-    ])
   })
 })

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../../shared/messages'
 import type { ChatTurn } from '../../shared/types'
-import { useFallbackStream } from './useFallbackStream'
+import { describeStep } from '../stepLabel'
+import { useAskStream } from './useAskStream'
 
 export function useChat(tabId: number | null) {
   const [turns, setTurns] = useState<ChatTurn[]>([])
-  const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fallback = useFallbackStream()
+  const stream = useAskStream()
 
   useEffect(() => {
     if (tabId === null) return
@@ -29,40 +29,19 @@ export function useChat(tabId: number | null) {
 
   async function ask(question: string) {
     const trimmed = question.trim()
-    if (tabId === null || pending || fallback.active || !trimmed) return
+    if (tabId === null || stream.active || !trimmed) return
 
     setError(null)
-    setPending(true)
     setTurns((prev) => [...prev, { role: 'user', content: trimmed }])
 
-    let response: BackgroundResponse
-    try {
-      const request: BackgroundRequest = { type: 'ASK_QUESTION', tabId, question: trimmed }
-      response = (await chrome.runtime.sendMessage(request)) as BackgroundResponse
-    } finally {
-      setPending(false)
-    }
-
-    if (response.type !== 'ASK_QUESTION_RESULT') return
-
-    if (!response.ok) {
-      setError(response.message)
-      return
-    }
-
-    if (response.result.found_in_page) {
-      setTurns((prev) => [...prev, { role: 'assistant', content: response.result.answer, source: 'page' }])
-      return
-    }
-
-    // Not found on the page — hand off to the Tavily fallback instead of
-    // showing pass 1's "not covered on the page" text.
-    const result = await fallback.start(tabId, trimmed)
+    // One call for every question: the model decides inside the loop whether to
+    // search, so there's no page-first pass to branch on out here.
+    const result = await stream.start(tabId, trimmed)
     if (!result.ok) {
       setError(result.message)
       return
     }
-    setTurns((prev) => [...prev, { role: 'assistant', content: result.fullText, source: 'web' }])
+    setTurns((prev) => [...prev, { role: 'assistant', content: result.fullText, source: result.source }])
   }
 
   async function clear() {
@@ -73,9 +52,15 @@ export function useChat(tabId: number | null) {
     setError(null)
   }
 
-  const displayTurns: ChatTurn[] = fallback.active
-    ? [...turns, { role: 'assistant', content: fallback.text || 'Searching the web…', source: 'web' }]
+  // The in-flight bubble carries no source label: which one is right is only known
+  // once the loop reports the tool calls it actually made.
+  const displayTurns: ChatTurn[] = stream.active
+    ? [...turns, { role: 'assistant', content: stream.text || pendingLabel(stream.step) }]
     : turns
 
-  return { turns: displayTurns, pending, fallbackActive: fallback.active, error, ask, clear }
+  return { turns: displayTurns, asking: stream.active, error, ask, clear }
+}
+
+function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {
+  return step ? describeStep(step) : 'Thinking…'
 }
