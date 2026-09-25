@@ -1,7 +1,6 @@
-import { FALLBACK_PORT_NAME, type BackgroundRequest, type BackgroundResponse, type FallbackPortRequest } from '../shared/messages'
-import { askQuestion } from './handlers/askQuestion'
+import { ASK_PORT_NAME, type AskPortRequest, type BackgroundRequest, type BackgroundResponse } from '../shared/messages'
+import { runAgentLoop } from './handlers/agentLoop'
 import { extractPage } from './handlers/extractPage'
-import { runTavilyFallback } from './handlers/tavilyFallback'
 import { clearHistory, getHistory } from './history/sessionHistory'
 import { getApiKeys } from './keys'
 
@@ -11,10 +10,10 @@ chrome.sidePanel
 
 // Registered at the top level, same reasoning as the onMessage listener below.
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== FALLBACK_PORT_NAME) return
-  port.onMessage.addListener((message: FallbackPortRequest) => {
-    if (message.type !== 'START_FALLBACK') return
-    runTavilyFallback(port, message.tabId, message.question)
+  if (port.name !== ASK_PORT_NAME) return
+  port.onMessage.addListener((message: AskPortRequest) => {
+    if (message.type !== 'START_ASK') return
+    runAgentLoop(port, message.tabId, message.question)
   })
 })
 
@@ -31,19 +30,6 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
             ok: false,
             reason: 'unknown-error',
             message: error instanceof Error ? error.message : 'Unknown error extracting page.',
-          }
-          sendResponse(response)
-        })
-      return true
-
-    case 'ASK_QUESTION':
-      askQuestion(message.tabId, message.question)
-        .then(sendResponse)
-        .catch((error) => {
-          const response: BackgroundResponse = {
-            type: 'ASK_QUESTION_RESULT',
-            ok: false,
-            message: error instanceof Error ? error.message : 'Unknown error asking question.',
           }
           sendResponse(response)
         })

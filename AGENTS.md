@@ -19,6 +19,11 @@ script, background, or popup) — just a Day-1 API sanity script.
 - `npm run test:nebius` — sanity-checks the Nebius Token Factory + Nemotron
   round trip (lists available models, runs one chat completion). Requires
   `.env` with `NEBIUS_API_KEY`.
+- `npm run test:tools` — live spike for native tool calling on Nemotron
+  (stubbed `search_site`/`fetch_page` tools, no Tavily calls). Pass model IDs
+  to compare models, `--only=<case-id>` to rerun one case (or a group like
+  `force`), `--repeat=<n>` to gauge flaky behavior. Requires `.env` with
+  `NEBIUS_API_KEY`.
 
 ## Environment
 
@@ -47,6 +52,14 @@ script, background, or popup) — just a Day-1 API sanity script.
 - Nebius chat responses may return reasoning/chain-of-thought under
   `message.reasoning` instead of the OpenAI-style `message.reasoning_content`,
   depending on model/wrapper — check both fields.
+
+## Decisions
+
+Architecture decisions live in [docs/adr/](docs/adr/) — read the index there
+before changing the chat pipeline, the model choice, or how tools are called.
+Pre-plan product decisions stay in [PLAN.md](PLAN.md); an ADR that contradicts
+a PLAN.md row says so explicitly. Add a record when a decision changes the
+architecture rather than burying it in a commit message.
 
 ## License
 

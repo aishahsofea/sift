@@ -1,0 +1,22 @@
+import type { AgentStep } from '../shared/types'
+
+// What the panel shows while a tool round runs. The query is the model's own
+// wording, which is the interesting part: it's how a follow-up like "what about
+// the second one?" becomes a searchable phrase.
+export function describeStep(step: AgentStep): string {
+  switch (step.kind) {
+    case 'searching':
+      return `Searching ${step.domain} for “${step.query}”…`
+    case 'reading':
+      return `Reading ${shortenUrl(step.url)}…`
+  }
+}
+
+function shortenUrl(url: string): string {
+  try {
+    const { hostname, pathname } = new URL(url)
+    return `${hostname}${pathname === '/' ? '' : pathname}`.replace(/\/$/, '')
+  } catch {
+    return url
+  }
+}

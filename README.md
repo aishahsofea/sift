@@ -1,9 +1,9 @@
 # Sift
 
 A Chrome extension that reads the page you're on and lets you ask questions
-about it. Answers come from the page content first; if the answer isn't
-there, it automatically falls back to a [Tavily](https://tavily.com) web
-search scoped to the current site.
+about it. Answers come from the page content when it covers the question; when
+it doesn't, the model searches the rest of the site with
+[Tavily](https://tavily.com) and answers from what it finds.
 
 Built for the Nebius x NVIDIA hackathon. Runs on
 [Nebius Token Factory](https://tokenfactory.nebius.com) using an NVIDIA
@@ -15,7 +15,9 @@ Nemotron model.
   built against). Vite 8 will fail to start on older Node 20.x with a
   confusing module-loading error rather than a clean version check.
 - A [Nebius Token Factory](https://tokenfactory.nebius.com) API key.
-- A [Tavily](https://tavily.com) API key.
+- A [Tavily](https://tavily.com) API key, for the site search. Without one Sift
+  still answers from the page and says so when the page doesn't cover the
+  question.
 
 ## Setup
 
@@ -42,11 +44,23 @@ produces a `dist/` directory.
 ## Using it
 
 Open any regular `http(s)://` page, then ask a question in the side panel.
-Sift first tries to answer from the page's own content; if the model reports
-the answer isn't on the page, it automatically searches the web (scoped to
-the current site's domain) and streams a prose answer instead. Pages that
-can't be read (e.g. `chrome://` pages, the built-in PDF viewer) show a
-disabled "Can't read this page" state rather than a raw error.
+
+The model decides for itself whether the page answers the question. When it
+doesn't, it searches the current site — writing its own query, so a follow-up
+like "what else have they written?" is searched under the author's name rather
+than the pronoun — and can pull up a full result page when a snippet isn't
+enough. It gets three rounds of that before it has to answer with whatever it
+has. The side panel names each search as it runs, and every answer is labeled
+**from the page** or **from the web** according to whether a search actually
+returned anything, not according to what the model says it did.
+
+Answers stream as they're written. Pages that can't be read (e.g. `chrome://`
+pages, the built-in PDF viewer) show a disabled "Can't read this page" state
+rather than a raw error.
+
+How this works, and why it replaced an earlier version where *Sift* rather than
+the model decided when to search, is recorded in
+[ADR 0001](docs/adr/0001-model-driven-agent-loop.md).
 
 ## Development
 
@@ -67,6 +81,7 @@ changes hot-reload).
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run — unit tests for pure logic only
 npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke test, reads .env
+npm run test:tools  # scripts/test-nebius-tools.mjs — live tool-calling spike for the agent loop, reads .env
 ```
 
 ## Project layout and design decisions
@@ -74,6 +89,9 @@ npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke te
 See [PLAN.md](PLAN.md) for the full phase-by-phase build plan, the fixed
 product decisions, and the permission/message-passing gotchas this extension
 works around.
+
+Architecture decisions made since that plan are recorded in
+[docs/adr/](docs/adr/).
 
 ## License
 

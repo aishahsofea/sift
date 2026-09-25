@@ -137,12 +137,6 @@ main {
   margin-bottom: 0.15rem;
 }
 
-.loading-indicator {
-  padding: 0 1rem;
-  color: #666;
-  font-size: 0.85rem;
-}
-
 .chat-error {
   padding: 0 1rem;
   color: #b91c1c;

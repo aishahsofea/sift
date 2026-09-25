@@ -1,47 +1,54 @@
-import type { PageGroundedResult } from '../../shared/types'
+import { FETCH_PAGE, REQUIRED_TOOL_ARGS, SEARCH_SITE } from './tools'
 
-// response_format for the page-grounded pass — verified working against
-// nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, returns clean JSON in message.content.
-export const PAGE_GROUNDED_RESPONSE_FORMAT = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'page_grounded_result',
-    strict: true,
-    schema: {
-      type: 'object',
-      properties: {
-        found_in_page: { type: 'boolean' },
-        answer: { type: 'string' },
-      },
-      required: ['found_in_page', 'answer'],
-      additionalProperties: false,
-    },
-  },
-} as const
+export interface RawToolCall {
+  id: string
+  name: string
+  /** Arguments exactly as the model sent them — a JSON string, echoed back verbatim. */
+  argsText: string
+}
 
-export type ParsePageGroundedResult = { ok: true; result: PageGroundedResult } | { ok: false; error: string }
+export type ParsedToolCall =
+  | { ok: true; id: string; name: typeof SEARCH_SITE; args: { query: string } }
+  | { ok: true; id: string; name: typeof FETCH_PAGE; args: { url: string } }
+  | { ok: false; id: string; error: string }
 
-export function parsePageGroundedResult(raw: string): ParsePageGroundedResult {
-  let parsed: unknown
+// Validates one tool call before anything is executed. Every rejection is
+// recoverable: the caller hands the error back as the tool result and the model
+// gets another round to correct itself, rather than the loop throwing (ADR 0004).
+export function parseToolCall(call: RawToolCall): ParsedToolCall {
+  const problems: string[] = []
+  if (!call.id) problems.push('missing id')
+
+  const required = REQUIRED_TOOL_ARGS[call.name]
+  if (!required) problems.push(`unknown tool ${JSON.stringify(call.name)}`)
+
+  let args: Record<string, unknown> | null = null
   try {
-    parsed = JSON.parse(raw)
+    const parsed: unknown = JSON.parse(call.argsText)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      args = parsed as Record<string, unknown>
+    }
   } catch {
-    return { ok: false, error: 'Model response was not valid JSON.' }
+    // reported below, same as a non-object payload
   }
 
-  if (typeof parsed !== 'object' || parsed === null) {
-    return { ok: false, error: 'Model response was not a JSON object.' }
+  if (!args) {
+    problems.push("arguments aren't a JSON object")
+  } else {
+    for (const key of required ?? []) {
+      const value = args[key]
+      if (typeof value !== 'string' || !value.trim()) problems.push(`missing "${key}" argument`)
+    }
   }
 
-  const { found_in_page, answer } = parsed as Record<string, unknown>
-
-  if (typeof found_in_page !== 'boolean') {
-    return { ok: false, error: 'Model response is missing a boolean "found_in_page" field.' }
+  if (problems.length) {
+    return { ok: false, id: call.id, error: `Invalid tool call: ${problems.join('; ')}` }
   }
 
-  if (typeof answer !== 'string') {
-    return { ok: false, error: 'Model response is missing a string "answer" field.' }
+  // Narrowed by the checks above: the name is a known tool and its required
+  // arguments are non-empty strings.
+  if (call.name === SEARCH_SITE) {
+    return { ok: true, id: call.id, name: SEARCH_SITE, args: { query: (args as { query: string }).query } }
   }
-
-  return { ok: true, result: { found_in_page, answer } }
+  return { ok: true, id: call.id, name: FETCH_PAGE, args: { url: (args as { url: string }).url } }
 }
