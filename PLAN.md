@@ -28,6 +28,10 @@ resilience beyond what's listed.
 
 ## Fixed product decisions (locked, not open for reconsideration)
 
+> Decisions taken after this plan live in [docs/adr/](docs/adr/). The
+> **Fallback trigger** and **Streaming** rows below are superseded by
+> [ADR 0001](docs/adr/0001-model-driven-agent-loop.md).
+
 | Area | Decision |
 |---|---|
 | Key handling | Options page → `chrome.storage.local`. Never in source or baked into the bundle. |

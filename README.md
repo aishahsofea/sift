@@ -67,6 +67,7 @@ changes hot-reload).
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run — unit tests for pure logic only
 npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke test, reads .env
+npm run test:tools  # scripts/test-nebius-tools.mjs — live tool-calling spike for the agent loop, reads .env
 ```
 
 ## Project layout and design decisions
@@ -74,6 +75,9 @@ npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke te
 See [PLAN.md](PLAN.md) for the full phase-by-phase build plan, the fixed
 product decisions, and the permission/message-passing gotchas this extension
 works around.
+
+Architecture decisions made since that plan are recorded in
+[docs/adr/](docs/adr/).
 
 ## License
 
