@@ -52,15 +52,31 @@ than the pronoun — and can pull up a full result page when a snippet isn't
 enough. It gets three rounds of that before it has to answer with whatever it
 has. The side panel names each search as it runs, and every answer is labeled
 from what actually happened, not from what the model says it did: **from the
-web** when a search returned something, **from the page** when the model held
-the whole page and searched nothing, and an amber **unverified** when an answer
-can't be traced to the page (see below).
+web** when a search returned something, **from the page** when the model quoted
+the page before answering and at least one quote was found word for word in the
+page text, **from the page and the web** when both hold, and a grey **not
+checked** when nothing ties the answer to the page (see below).
+
+Answering from the page takes an extra round: the model calls `cite_page` with
+up to three short passages that support its answer, and Sift checks each one
+against the page text in code, not by asking a model. A quote that isn't there
+comes back to the model as an error to correct; once one is found, the model is
+told to answer, and any quote that wasn't found is left out of the answer. An
+answer written without calling `cite_page` is thrown away unseen and the model is
+asked once to quote first. The chip says how many quotes were checked, not that
+the answer was, because one verified quote shows the page was quoted and not that
+every claim in the answer is on it. An answer with no verified quote is
+**not checked**, which is not the same as wrong. Each answer also logs one line to
+the service worker console saying why it got its label. See
+[ADR 0005](docs/adr/0005-grounding-is-verified-not-assumed.md).
 
 Pages longer than 120,000 characters are cut short. The panel says so before you
 ask anything, and again on each answer given against a cut page. The model is
 told how many characters it can't see and to search for anything past the cut,
-and an answer on a cut page with no search behind it is labeled **unverified**,
-since the model only held a fragment of the page.
+and an answer on a cut page with no search behind it is labeled **not checked**,
+since the model only held a fragment of the page. The quote step is skipped on a
+cut page: a quote from the part the model saw can't show the answer wasn't about
+the part it didn't.
 
 Answers stream as they're written. Pages that can't be read (e.g. `chrome://`
 pages, the built-in PDF viewer) show a disabled "Can't read this page" state
@@ -90,6 +106,7 @@ npm run typecheck   # tsc --noEmit
 npm run test        # vitest run — unit tests for pure logic only
 npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke test, reads .env
 npm run test:tools  # scripts/test-nebius-tools.mjs — live tool-calling spike for the agent loop, reads .env
+                    # (--no-cite runs it without cite_page, the baseline for that round's cost)
 ```
 
 ## Project layout and design decisions
