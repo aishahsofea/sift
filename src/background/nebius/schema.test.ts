@@ -25,6 +25,42 @@ describe('parseToolCall', () => {
     expect(parsed).toEqual({ ok: true, id: 'call_1', name: 'fetch_page', args: { url: 'https://example.com/a' } })
   })
 
+  describe('cite_page', () => {
+    const cite = (args: unknown) => call({ name: 'cite_page', argsText: JSON.stringify(args) })
+
+    it('parses a list of quotes', () => {
+      const parsed = parseToolCall(cite({ quotes: ['Thanks to the 1,200 beta testers', 'Published March 3, 2026.'] }))
+      expect(parsed).toEqual({
+        ok: true,
+        id: 'call_1',
+        name: 'cite_page',
+        args: { quotes: ['Thanks to the 1,200 beta testers', 'Published March 3, 2026.'] },
+      })
+    })
+
+    it('rejects quotes sent as a single string rather than a list', () => {
+      const parsed = parseToolCall(cite({ quotes: 'Thanks to the 1,200 beta testers' }))
+      expect(parsed.ok).toBe(false)
+      expect(parsed.ok === false && parsed.error).toContain('"quotes" must be a non-empty list of strings')
+    })
+
+    it('rejects a missing quotes argument', () => {
+      expect(parseToolCall(cite({})).ok).toBe(false)
+    })
+
+    it('rejects an empty list', () => {
+      expect(parseToolCall(cite({ quotes: [] })).ok).toBe(false)
+    })
+
+    it('rejects a list holding something other than strings', () => {
+      expect(parseToolCall(cite({ quotes: ['a real passage here', 42] })).ok).toBe(false)
+    })
+
+    it('rejects a list holding a blank string', () => {
+      expect(parseToolCall(cite({ quotes: ['a real passage here', '  '] })).ok).toBe(false)
+    })
+  })
+
   it('ignores arguments the tool does not declare', () => {
     const parsed = parseToolCall(call({ argsText: JSON.stringify({ query: 'pricing', include_domains: ['evil.test'] }) }))
     expect(parsed).toEqual({ ok: true, id: 'call_1', name: 'search_site', args: { query: 'pricing' } })

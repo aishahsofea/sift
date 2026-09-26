@@ -12,8 +12,10 @@ export type ChatMessage =
   | { role: 'tool'; tool_call_id: string; content: string }
 
 export interface AgentPromptOptions {
-  /** False when no Tavily key is configured, so the loop runs without tools. */
+  /** False when no Tavily key is configured, so the search tools aren't sent. */
   searchEnabled: boolean
+  /** Whether cite_page is offered, so the prompt only asks for it when it can be called. */
+  citeEnabled: boolean
 }
 
 // The messages every round starts from. The page lives in this system message, so
@@ -34,21 +36,61 @@ export function assembleAgentMessages(
   ]
 }
 
-function buildAgentSystemPrompt(page: ExtractedPage, { searchEnabled }: AgentPromptOptions): string {
-  const site = new URL(page.url).hostname
+// How the model is told to answer, which depends on the tools it has. Verified prompt
+// surface: scripts/test-nebius-tools.mjs keeps the same text and re-checks it live.
+//
+// With both tools, two explicit paths. cite_page belongs to the page path only:
+// quote-then-answer (ADR 0005) has the model commit to passages before it writes
+// claims, and the handler checks them against the page. Written as one line ("before
+// you answer from the page, call cite_page"), Nano read it as a step in every answer
+// and cited search snippets in 11 of 12 search runs, each wasting a round of the cap.
+// Two paths, with the ban stated where the search path ends, plus the notes in the
+// tool results (SEARCH_NOTE, FETCH_NOTE), took that to 0 of 47; neither alone did.
+function answerInstructions(site: string, { searchEnabled, citeEnabled }: AgentPromptOptions): string[] {
+  const intro = `You answer questions about the web page the user is viewing on ${site}.`
 
-  const toolInstructions = searchEnabled
-    ? [
-        `If it doesn't (or only covers part of it), call search_site to search ${site}. If the results don't help, search again with a better query.`,
-        "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full.",
-      ]
-    : // No Tavily key: the tools aren't sent this turn, so don't promise a search.
-      ["You have no search available, so if the page doesn't cover the question, say so."]
+  if (searchEnabled && citeEnabled) {
+    return [
+      `${intro} There are two ways to answer.`,
+      '1. From the page content below, when it covers the question: first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them.',
+      `2. From the site, when the page content doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results. Don't call cite_page on this path: it only checks the page content below, never search or fetch results.`,
+    ]
+  }
+
+  if (searchEnabled) {
+    return [
+      intro,
+      'Answer from the page content below whenever it covers the question.',
+      `If it doesn't (or only covers part of it), call search_site to search ${site}. If the results don't help, search again with a better query.`,
+      "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full.",
+    ]
+  }
 
   return [
-    `You answer questions about the web page the user is viewing on ${site}.`,
-    'Answer from the page content below whenever it covers the question.',
-    ...toolInstructions,
+    intro,
+    citeEnabled
+      ? 'If the page content below covers the question, first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them.'
+      : 'Answer from the page content below whenever it covers the question.',
+    // No Tavily key: the tools aren't sent this turn, so don't promise a search.
+    "You have no search available, so if the page doesn't cover the question, say so.",
+  ]
+}
+
+// The text of the page as the system prompt presents it: what a cite_page quote is
+// checked against (ADR 0005). Title and byline are in it because the model reads
+// them as the page and answers from them — on Distill-style pages the byline is not
+// in `content` at all (#6) — so a quote of them has to be able to verify. The URL is
+// metadata, not page text.
+export function pageText(page: ExtractedPage): string {
+  return [page.title, page.byline, page.content].filter(Boolean).join('\n')
+}
+
+function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions): string {
+  const site = new URL(page.url).hostname
+  const { searchEnabled } = options
+
+  return [
+    ...answerInstructions(site, options),
     'Never answer from outside knowledge. If neither the page nor the search results cover the question, say so.',
     ...truncationNotice(page, searchEnabled),
     '',

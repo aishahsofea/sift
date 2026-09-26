@@ -1,0 +1,582 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MAX_TOOL_ROUNDS } from '../../shared/constants'
+import type { AskPortMessage } from '../../shared/messages'
+import type { ChatTurn, ExtractedPage } from '../../shared/types'
+import { appendHistoryTurns, getExtractedPage, getHistory } from '../history/sessionHistory'
+import { getApiKeys } from '../keys'
+import { streamAgentTurn, type AgentTurn } from '../nebius/client'
+import type { ChatMessage } from '../nebius/promptAssembly'
+import {
+  CITE_DONE_NOTE,
+  CITE_NUDGE,
+  CITE_PARTIAL_NOTE,
+  FETCH_NOTE,
+  FORCE_NUDGE,
+  FORCE_NUDGE_CITE,
+  FORCE_RETRY,
+  SEARCH_NOTE,
+} from '../nebius/tools'
+import { extractTavily, searchTavily } from '../tavily/client'
+import { runAgentLoop } from './agentLoop'
+
+// The loop is driven through runAgentLoop with only its boundaries faked: the
+// model, Tavily, chrome.storage and the port. Everything between — tool parsing,
+// quote verification, label derivation — is the real code.
+vi.mock('../history/sessionHistory', () => ({
+  getExtractedPage: vi.fn(),
+  getHistory: vi.fn(),
+  appendHistoryTurns: vi.fn(),
+}))
+vi.mock('../keys', () => ({ getApiKeys: vi.fn() }))
+vi.mock('../nebius/client', () => ({ streamAgentTurn: vi.fn() }))
+vi.mock('../tavily/client', () => ({ searchTavily: vi.fn(), extractTavily: vi.fn() }))
+
+const QUOTE = 'Thanks to the 1,200 beta testers who filed over 3,000 bug reports'
+
+const wholePage: ExtractedPage = {
+  url: 'https://loomkit.example/blog/introducing-loomkit-2',
+  title: 'Introducing Loomkit 2.0',
+  content: `By Dana Reyes, co-founder.\n\n${QUOTE} during the preview.`,
+  extractionMethod: 'readability',
+  truncated: false,
+  charsOmitted: 0,
+}
+
+const truncatedPage: ExtractedPage = { ...wholePage, truncated: true, charsOmitted: 126_323 }
+
+let callId = 0
+const toolRound = (name: string, args: unknown): AgentTurn => ({
+  content: '',
+  toolCalls: [{ id: `call_${++callId}`, name, argsText: JSON.stringify(args) }],
+})
+const cite = (...quotes: string[]) => toolRound('cite_page', { quotes })
+const search = (query: string) => toolRound('search_site', { query })
+const answer = (content: string): AgentTurn => ({ content, toolCalls: [] })
+
+// What each model call was sent, snapshotted when it was made: the loop keeps
+// appending to the same messages array afterwards.
+let modelCalls: { messages: ChatMessage[]; tools: unknown }[]
+
+function scriptModel(...rounds: AgentTurn[]): void {
+  const queue = [...rounds]
+  vi.mocked(streamAgentTurn).mockImplementation(async (_key, messages, { tools, onContent }) => {
+    modelCalls.push({ messages: structuredClone(messages), tools })
+    const next = queue.shift()
+    if (!next) throw new Error('The loop called the model more times than the test scripted.')
+    if (next.content) onContent(next.content)
+    return next
+  })
+}
+
+async function ask(question = 'How many beta testers were there?') {
+  const posted: AskPortMessage[] = []
+  const port = {
+    postMessage: (message: AskPortMessage) => posted.push(message),
+    onDisconnect: { addListener: () => {} },
+  } as unknown as chrome.runtime.Port
+
+  await runAgentLoop(port, 1, question)
+
+  const done = posted.find((m): m is Extract<AskPortMessage, { type: 'ASK_DONE' }> => m.type === 'ASK_DONE')
+  const failed = posted.find((m): m is Extract<AskPortMessage, { type: 'ASK_ERROR' }> => m.type === 'ASK_ERROR')
+  return { posted, turn: done?.turn as ChatTurn, error: failed?.message }
+}
+
+// The tool-role messages the model was sent on a given call, parsed.
+function toolResults(callIndex: number): Record<string, unknown>[] {
+  return modelCalls[callIndex].messages
+    .filter((m): m is Extract<ChatMessage, { role: 'tool' }> => m.role === 'tool')
+    .map((m) => JSON.parse(m.content))
+}
+
+const toolNames = (tools: unknown): string[] =>
+  Array.isArray(tools) ? tools.map((t: { function: { name: string } }) => t.function.name) : []
+
+// What the loop wrote to the service worker console, as one string.
+const logged = () => vi.mocked(console.log).mock.calls.map((args) => args.join(' ')).join('\n')
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  callId = 0
+  modelCalls = []
+  vi.mocked(getApiKeys).mockResolvedValue({ nebiusApiKey: 'nebius-key', tavilyApiKey: 'tavily-key' })
+  vi.mocked(getExtractedPage).mockResolvedValue(wholePage)
+  vi.mocked(getHistory).mockResolvedValue([])
+  vi.mocked(appendHistoryTurns).mockResolvedValue([])
+})
+
+describe('quote-then-answer (ADR 0005)', () => {
+  it('labels an answer from the page when a quote it cited is found in the page, and keeps the quote', async () => {
+    scriptModel(cite(QUOTE), answer('There were 1,200 beta testers.'))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    expect(turn).toMatchObject({ role: 'assistant', source: 'page', quotes: [QUOTE] })
+    expect(vi.mocked(appendHistoryTurns)).toHaveBeenCalledWith(1, [
+      { role: 'user', content: 'How many beta testers were there?' },
+      turn,
+    ])
+  })
+
+  it('tells the model which quotes were verified', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask()
+
+    expect(toolResults(1)).toEqual([{ verified: [QUOTE], note: CITE_DONE_NOTE }])
+  })
+
+  it('does not label an answer from the page when the model never cited it, even after being asked to', async () => {
+    scriptModel(answer('There were about 500 beta testers.'), answer('There were about 500 beta testers.'))
+
+    const { turn } = await ask()
+
+    expect(turn.source).toBe('unverified')
+    expect(turn).not.toHaveProperty('quotes')
+  })
+
+  it('answers a fabricated quote with a tool-role error and a corrected round, not a thrown loop', async () => {
+    scriptModel(
+      cite('The attack works by asking the model to think step by step'),
+      cite(QUOTE),
+      answer('There were 1,200 beta testers.'),
+    )
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    const [rejection] = toolResults(1)
+    expect(rejection.verified).toEqual([])
+    expect(rejection.error).toContain('quote not found in page text')
+    // Nothing verified yet, so the way out is to try again, not to answer.
+    expect(rejection).not.toHaveProperty('note')
+    expect(turn).toMatchObject({ source: 'page', quotes: [QUOTE] })
+  })
+
+  it('does not label an answer from the page when every quote it cited was fabricated', async () => {
+    scriptModel(cite('The attack works by asking the model to think step by step'), answer('It asks for step by step.'))
+
+    const { turn } = await ask()
+
+    expect(turn.source).toBe('unverified')
+    expect(turn).not.toHaveProperty('quotes')
+  })
+
+  it('keeps the verified quote when the same call also held a fabricated one', async () => {
+    scriptModel(cite(QUOTE, 'Loomkit 2.0 adds an AI assistant'), answer('1,200 testers.'))
+
+    const { turn } = await ask()
+
+    expect(turn).toMatchObject({ source: 'page', quotes: [QUOTE] })
+    expect(toolResults(1)[0].error).toContain('Loomkit 2.0 adds an AI assistant')
+  })
+
+  it('stops the model citing once one quote has verified: it answers with what verified, rejected or not', async () => {
+    scriptModel(cite(QUOTE, 'Loomkit 2.0 adds an AI assistant'), answer('1,200 testers.'))
+
+    await ask()
+
+    expect(toolResults(1)[0]).toMatchObject({ verified: [QUOTE], note: CITE_PARTIAL_NOTE })
+    expect(toolResults(1)[0]).not.toMatchObject({ note: CITE_DONE_NOTE })
+  })
+
+  it('lets a quote from the byline or the title verify, since the model reads both as the page', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue({ ...wholePage, byline: 'AUTHORS\nJack Lindsey†\n† Lead Contributor' })
+    scriptModel(cite('AUTHORS Jack Lindsey† † Lead Contributor'), answer('Jack Lindsey.'))
+
+    const { turn } = await ask('Who is the lead contributor?')
+
+    expect(turn.source).toBe('page')
+  })
+
+  it('rejects a quote too short to tie the answer to anything', async () => {
+    scriptModel(cite('the'), answer('There were some.'))
+
+    const { turn } = await ask()
+
+    expect(toolResults(1)[0].error).toContain('quote too short')
+    expect(turn.source).toBe('unverified')
+  })
+
+  it('turns a malformed cite_page call into a tool-role error the model can correct', async () => {
+    scriptModel(toolRound('cite_page', { quotes: QUOTE }), cite(QUOTE), answer('1,200.'))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    expect(toolResults(1)[0].error).toContain('"quotes" must be a non-empty list of strings')
+    expect(turn.source).toBe('page')
+  })
+
+  it('tells the panel the quotes are being checked, before the check runs', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    const { posted } = await ask()
+
+    const stepAt = posted.findIndex((m) => m.type === 'ASK_STEP' && m.step.kind === 'citing')
+    const doneAt = posted.findIndex((m) => m.type === 'ASK_DONE')
+    expect(stepAt).toBeGreaterThanOrEqual(0)
+    expect(stepAt).toBeLessThan(doneAt)
+  })
+
+  it('ends on a forced answer, labelled unverified, when every round was spent on rejected quotes', async () => {
+    const fake = 'Nothing on the page says anything like this'
+    scriptModel(...Array.from({ length: MAX_TOOL_ROUNDS }, () => cite(fake)), answer("The page doesn't say."))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    expect(turn.source).toBe('unverified')
+    const forced = modelCalls[MAX_TOOL_ROUNDS]
+    expect(forced.tools).toBeUndefined()
+    expect(forced.messages.at(-1)).toEqual({ role: 'user', content: FORCE_NUDGE_CITE })
+  })
+})
+
+// A model that answers a page question without calling cite_page leaves nothing
+// to verify. Quoting *after* such an answer would let it cite passages that merely
+// relate to something it made up (#5's failure, relabelled `page`), so the answer is
+// discarded and the model is asked to quote first (ADR 0005).
+describe('an answer with no cite_page call on a whole page', () => {
+  const chunks = (posted: AskPortMessage[]) =>
+    posted.filter((m): m is Extract<AskPortMessage, { type: 'ASK_CHUNK' }> => m.type === 'ASK_CHUNK').map((m) => m.delta)
+
+  it('is discarded, and the model is asked to quote before it answers again', async () => {
+    scriptModel(answer('About 500 beta testers.'), cite(QUOTE), answer('There were 1,200 beta testers.'))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    expect(modelCalls).toHaveLength(3)
+    expect(modelCalls[1].messages.at(-1)).toEqual({ role: 'user', content: CITE_NUDGE })
+    expect(turn).toMatchObject({ content: 'There were 1,200 beta testers.', source: 'page', quotes: [QUOTE] })
+  })
+
+  it('is never shown to the user or written to history', async () => {
+    scriptModel(answer('About 500 beta testers.'), cite(QUOTE), answer('There were 1,200 beta testers.'))
+
+    const { posted } = await ask()
+
+    expect(chunks(posted).join('')).toBe('There were 1,200 beta testers.')
+    expect(vi.mocked(appendHistoryTurns).mock.calls[0][1].map((t) => t.content)).not.toContain('About 500 beta testers.')
+  })
+
+  it('leaves the nudge out of the messages once the model has cited, so the conversation reads as if it had cited first', async () => {
+    scriptModel(answer('About 500.'), cite(QUOTE), answer('1,200.'))
+
+    await ask()
+
+    expect(modelCalls[2].messages.some((m) => m.role === 'user' && m.content === CITE_NUDGE)).toBe(false)
+    expect(modelCalls[2].messages.at(-1)).toMatchObject({ role: 'tool' })
+  })
+
+  it('tells the panel the quotes are being checked while it asks again', async () => {
+    scriptModel(answer('About 500.'), cite(QUOTE), answer('1,200.'))
+
+    const { posted } = await ask()
+
+    const firstStep = posted.findIndex((m) => m.type === 'ASK_STEP' && m.step.kind === 'citing')
+    const firstChunk = posted.findIndex((m) => m.type === 'ASK_CHUNK')
+    expect(firstStep).toBeGreaterThanOrEqual(0)
+    expect(firstStep).toBeLessThan(firstChunk)
+  })
+
+  it('asks once, and accepts a second uncited answer as unverified rather than asking forever', async () => {
+    scriptModel(answer('About 500.'), answer('The page does not say.'))
+
+    const { turn, posted } = await ask()
+
+    expect(modelCalls).toHaveLength(2)
+    expect(turn).toMatchObject({ content: 'The page does not say.', source: 'unverified' })
+    expect(turn).not.toHaveProperty('quotes')
+    // Nothing left to discard, so this one streams as it is written.
+    expect(chunks(posted).join('')).toBe('The page does not say.')
+  })
+
+  it('is not asked again when the model searched first, even if the search found nothing', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([])
+    scriptModel(search('Loomkit Pro price'), answer("I couldn't find it."))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(modelCalls).toHaveLength(2)
+    expect(turn.source).toBe('unverified')
+  })
+
+  it('is left alone on a cut page, where cite_page is not offered', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(answer('About 500.'))
+
+    const { turn } = await ask()
+
+    expect(modelCalls).toHaveLength(1)
+    expect(turn.content).toBe('About 500.')
+  })
+
+  it('lets the model search instead of citing when asked, without asking again', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([{ title: 'Pricing', url: 'https://loomkit.example/pricing', content: 'Pro: $17.50.' }])
+    scriptModel(answer('It is free.'), search('Loomkit Pro price'), answer('$17.50.'))
+
+    const { turn, error } = await ask('How much is Pro?')
+
+    expect(error).toBeUndefined()
+    expect(modelCalls).toHaveLength(3)
+    expect(turn).toMatchObject({ content: '$17.50.', source: 'web' })
+  })
+
+  it('does not use up one of the tool rounds', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([])
+    const searches = Array.from({ length: MAX_TOOL_ROUNDS }, (_, i) => search(`query ${i}`))
+    scriptModel(answer('About 500.'), ...searches, answer("I couldn't find it."))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    // The discarded answer, every search the cap allows, then the forced answer.
+    expect(modelCalls).toHaveLength(MAX_TOOL_ROUNDS + 2)
+    expect(modelCalls.at(-1)?.tools).toBeUndefined()
+    expect(modelCalls.at(-1)?.messages.at(-1)).toEqual({ role: 'user', content: FORCE_NUDGE_CITE })
+    expect(turn.content).toBe("I couldn't find it.")
+  })
+
+  it('is logged, so a discarded answer is not invisible', async () => {
+    scriptModel(answer('About 500.'), cite(QUOTE), answer('1,200.'))
+
+    await ask()
+
+    expect(logged()).toContain('asked to quote first')
+  })
+})
+
+// The last round has no tools, and on real pages the model still reached for cite_page in
+// it: the prompt says to quote before answering, and the old nudge only mentioned searches.
+// It comes back as a tool call, which used to be an error shown to the user.
+describe('the forced final round', () => {
+  const spent = () => Array.from({ length: MAX_TOOL_ROUNDS }, (_, i) => search(`query ${i}`))
+
+  beforeEach(() => {
+    vi.mocked(searchTavily).mockResolvedValue([])
+  })
+
+  it('tells the model on a whole page that cite_page is gone too, not only search', async () => {
+    scriptModel(...spent(), answer("I couldn't find it."))
+
+    await ask()
+
+    expect(modelCalls.at(-1)?.messages.at(-1)).toEqual({ role: 'user', content: FORCE_NUDGE_CITE })
+  })
+
+  it('keeps the search-only nudge where cite_page was never offered', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(...spent(), answer("I couldn't find it."))
+
+    await ask()
+
+    expect(modelCalls.at(-1)?.messages.at(-1)).toEqual({ role: 'user', content: FORCE_NUDGE })
+  })
+
+  it('asks once more, instead of failing, when the model still calls a tool', async () => {
+    scriptModel(...spent(), cite(QUOTE), answer('There were 1,200 beta testers.'))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    expect(turn.content).toBe('There were 1,200 beta testers.')
+    const retry = modelCalls.at(-1)
+    expect(retry?.tools).toBeUndefined()
+    expect(retry?.messages.slice(-2)).toEqual([
+      { role: 'user', content: FORCE_NUDGE_CITE },
+      { role: 'user', content: FORCE_RETRY },
+    ])
+  })
+
+  it('does not credit the cite_page call it refused to run', async () => {
+    scriptModel(...spent(), cite(QUOTE), answer('There were 1,200 beta testers.'))
+
+    const { turn } = await ask()
+
+    expect(turn.source).toBe('unverified')
+    expect(turn).not.toHaveProperty('quotes')
+  })
+
+  it('fails, as before, if it still calls a tool after being asked twice', async () => {
+    scriptModel(...spent(), cite(QUOTE), cite(QUOTE))
+
+    const { turn, error } = await ask()
+
+    expect(turn).toBeUndefined()
+    expect(error).toBe('The model kept searching instead of answering.')
+  })
+})
+
+describe('with a web result', () => {
+  const results = [{ title: 'Pricing', url: 'https://loomkit.example/pricing', content: 'Pro: $17.50.' }]
+
+  beforeEach(() => {
+    vi.mocked(searchTavily).mockResolvedValue(results)
+  })
+
+  it('labels an answer from the web when nothing on the page was quoted', async () => {
+    scriptModel(search('Loomkit Pro price'), answer('$17.50.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.source).toBe('web')
+    expect(turn).not.toHaveProperty('quotes')
+  })
+
+  it('says in the search result that it is not the page, so the model does not cite the snippet', async () => {
+    scriptModel(search('Loomkit Pro price'), answer('$17.50.'))
+
+    await ask('How much is Pro?')
+
+    expect(toolResults(1)).toEqual([{ results, note: SEARCH_NOTE }])
+  })
+
+  it('says the same of a fetched page', async () => {
+    vi.mocked(extractTavily).mockResolvedValue('Pro: $17.50 per user per month.')
+    scriptModel(search('Loomkit Pro price'), toolRound('fetch_page', { url: results[0].url }), answer('$17.50.'))
+
+    await ask('How much is Pro?')
+
+    expect(toolResults(2)[1]).toEqual({
+      url: results[0].url,
+      content: 'Pro: $17.50 per user per month.',
+      note: FETCH_NOTE,
+    })
+  })
+
+  it('adds no note when cite_page is not offered, since there is nothing to warn off', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(search('Loomkit Pro price'), answer('$17.50.'))
+
+    await ask('How much is Pro?')
+
+    expect(toolResults(1)).toEqual([{ results }])
+  })
+
+  it('labels an answer page+web when a page quote was verified next to the web result', async () => {
+    scriptModel(search('Loomkit Pro price'), cite(QUOTE), answer('1,200 testers; Pro is $17.50.'))
+
+    const { turn } = await ask('How many testers, and how much is Pro?')
+
+    expect(turn).toMatchObject({ source: 'page+web', quotes: [QUOTE] })
+  })
+})
+
+describe('which tools a round is offered', () => {
+  it('offers cite_page alongside the search tools on a whole page', async () => {
+    scriptModel(answer('1,200.'))
+
+    await ask()
+
+    expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page', 'cite_page'])
+    expect(modelCalls[0].messages[0].content).toContain('call cite_page')
+  })
+
+  it('still offers cite_page with no Tavily key, since it needs no network', async () => {
+    vi.mocked(getApiKeys).mockResolvedValue({ nebiusApiKey: 'nebius-key', tavilyApiKey: undefined })
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    const { turn } = await ask()
+
+    expect(toolNames(modelCalls[0].tools)).toEqual(['cite_page'])
+    expect(turn).toMatchObject({ source: 'page', quotes: [QUOTE] })
+  })
+
+  it('does not offer cite_page on a truncated page: the label is capped there anyway, so the round buys nothing', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(answer('1,200.'))
+
+    const { turn } = await ask()
+
+    expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page'])
+    expect(modelCalls[0].messages[0].content).not.toContain('cite_page')
+    expect(turn.source).toBe('unverified')
+    expect(turn).toMatchObject({ truncated: true, charsOmitted: 126_323 })
+  })
+
+  it('sends no tools at all on a truncated page with no Tavily key', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    vi.mocked(getApiKeys).mockResolvedValue({ nebiusApiKey: 'nebius-key', tavilyApiKey: undefined })
+    scriptModel(answer('1,200.'))
+
+    await ask()
+
+    expect(modelCalls[0].tools).toBeUndefined()
+  })
+
+  it('refuses a cite_page call on a truncated page rather than crediting it', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    const { turn } = await ask()
+
+    expect(toolResults(1)).toEqual([{ error: 'cite_page is not available.' }])
+    expect(turn.source).toBe('unverified')
+    expect(turn).not.toHaveProperty('quotes')
+  })
+})
+
+// Amber `unverified` looks the same in the panel whether the model skipped cite_page,
+// cited and had every quote rejected, or was never offered the tool. The log is how
+// to tell them apart on a real page.
+describe('the log line', () => {
+  it('says a quoted answer was quoted', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask()
+
+    expect(logged()).toContain('answered as page')
+    expect(logged()).toContain('cite_page: called 1×, 1 verified')
+  })
+
+  it('says when the model never called cite_page, even when asked to', async () => {
+    scriptModel(answer('About 500.'), answer('About 500.'))
+
+    await ask()
+
+    expect(logged()).toContain('answered as unverified')
+    expect(logged()).toContain('cite_page: offered, not called')
+    expect(logged()).toContain('asked to quote first')
+  })
+
+  it('names the quote that was rejected', async () => {
+    scriptModel(cite('The attack works by asking the model to think step by step'), answer('It asks for step by step.'))
+
+    await ask()
+
+    expect(logged()).toContain('answered as unverified')
+    expect(logged()).toContain('cite_page: called 1×, 0 verified')
+    expect(logged()).toContain('quote not found in page text: "The attack works by asking the model')
+  })
+
+  it('names a malformed cite_page call', async () => {
+    scriptModel(toolRound('cite_page', { quotes: QUOTE }), answer('1,200.'))
+
+    await ask()
+
+    expect(logged()).toContain('"quotes" must be a non-empty list of strings')
+  })
+
+  it('says cite_page was not offered on a cut page', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(answer('1,200.'))
+
+    await ask()
+
+    expect(logged()).toContain('cite_page: not offered (page cut off)')
+  })
+
+  it('lists the tools the model called, in order', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([{ title: 'Pricing', url: 'https://loomkit.example/pricing', content: 'Pro: $17.50.' }])
+    scriptModel(search('Loomkit Pro price'), cite(QUOTE), answer('1,200 testers; Pro is $17.50.'))
+
+    await ask()
+
+    expect(logged()).toContain('Tools: search_site, cite_page')
+    expect(logged()).toContain('answered as page+web')
+  })
+})
