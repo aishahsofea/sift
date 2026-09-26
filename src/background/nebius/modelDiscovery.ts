@@ -2,14 +2,16 @@ import { NEBIUS_BASE_URL } from '../../shared/constants'
 
 // Reimplements the discover-then-prefer pattern from scripts/test-nebius.mjs
 // (not imported — that script runs under plain process.env, this runs in the
-// service worker under chrome.storage.local). Preferred smallest/cheapest-first
-// Nemotron chat models, in order, verified against the real /models list.
+// service worker under chrome.storage.local).
+//
+// Only IDs checked against a live GET /v1/models go in here, in preference
+// order. Nano first per ADR 0002; Super second because the same spike showed
+// it correct, just slower and uncached. The account's other two Nemotrons
+// (Nemotron-3_5-Lightning, Nemotron-3-Ultra-550b-a55b) are untested for the
+// agent loop, so they stay out and are reached only via the fallback below.
 const NEMOTRON_CANDIDATES = [
   'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
-  'nvidia/Nemotron-3-Nano-30B-A3B',
-  'nvidia/Nemotron-Nano-V2-12b',
-  'nvidia/Nemotron-3-Nano-Omni',
-  'nvidia/Llama-3_1-Nemotron-Ultra-253B-v1',
+  'nvidia/nemotron-3-super-120b-a12b',
 ]
 
 // Cached for the service worker's lifetime — cheap to keep, self-heals on restart.
