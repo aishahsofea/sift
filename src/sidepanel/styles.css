@@ -137,16 +137,17 @@ main {
   margin-bottom: 0.15rem;
 }
 
-/* Amber, and at full strength: this is the one label that is a warning rather
-   than a provenance note (ADR 0005). */
+/* Neutral grey, and at full strength so it still reads as a different kind of label
+   from the provenance notes. It was amber, which read as "this is probably wrong" on
+   answers that were fine: no quote to check is not the same as a bad answer (ADR 0005). */
 .message-bubble-source-unverified {
   display: inline-block;
   opacity: 1;
   padding: 0.1rem 0.4rem;
-  border: 1px solid #fcd34d;
+  border: 1px solid #d4d4d8;
   border-radius: 0.5rem;
-  background: #fef3c7;
-  color: #92400e;
+  background: #f4f4f5;
+  color: #52525b;
 }
 
 .message-bubble-truncated {

@@ -21,4 +21,8 @@ describe('describeStep', () => {
   it('falls back to the raw string when the URL will not parse', () => {
     expect(describeStep({ kind: 'reading', url: 'not a url' })).toBe('Reading not a url…')
   })
+
+  it('says the quotes are being checked against the page', () => {
+    expect(describeStep({ kind: 'citing' })).toBe('Checking quotes against the page…')
+  })
 })

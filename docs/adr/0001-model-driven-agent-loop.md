@@ -121,6 +121,7 @@ a throwaway test driving [client.ts](../../src/background/nebius/client.ts) and
 - Not covered by this change: the eval set named above (on-page, off-page,
   partial, follow-up) that was meant to replace the `found_in_page` guard. Until
   it exists, nothing measures grounding or tool-call rate on real pages.
-- A page with no Tavily key configured degrades to one page-grounded round rather
-  than failing: the tools aren't sent, and the system prompt says so instead of
-  promising a search that can't happen.
+- A page with no Tavily key configured degrades to a page-grounded answer rather
+  than failing: the search tools aren't sent, and the system prompt says so instead
+  of promising a search that can't happen. That was one round; since #10 it is
+  `cite_page` then the answer, two ([ADR 0005](0005-grounding-is-verified-not-assumed.md)).

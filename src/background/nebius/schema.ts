@@ -1,4 +1,4 @@
-import { FETCH_PAGE, REQUIRED_TOOL_ARGS, SEARCH_SITE } from './tools'
+import { CITE_PAGE, FETCH_PAGE, REQUIRED_TOOL_ARGS, SEARCH_SITE, type ArgKind } from './tools'
 
 export interface RawToolCall {
   id: string
@@ -10,6 +10,7 @@ export interface RawToolCall {
 export type ParsedToolCall =
   | { ok: true; id: string; name: typeof SEARCH_SITE; args: { query: string } }
   | { ok: true; id: string; name: typeof FETCH_PAGE; args: { url: string } }
+  | { ok: true; id: string; name: typeof CITE_PAGE; args: { quotes: string[] } }
   | { ok: false; id: string; error: string }
 
 // Validates one tool call before anything is executed. Every rejection is
@@ -35,9 +36,8 @@ export function parseToolCall(call: RawToolCall): ParsedToolCall {
   if (!args) {
     problems.push("arguments aren't a JSON object")
   } else {
-    for (const key of required ?? []) {
-      const value = args[key]
-      if (typeof value !== 'string' || !value.trim()) problems.push(`missing "${key}" argument`)
+    for (const [key, kind] of Object.entries(required ?? {})) {
+      if (!isValidArg(args[key], kind)) problems.push(argProblem(key, kind))
     }
   }
 
@@ -46,9 +46,25 @@ export function parseToolCall(call: RawToolCall): ParsedToolCall {
   }
 
   // Narrowed by the checks above: the name is a known tool and its required
-  // arguments are non-empty strings.
+  // arguments have the types it declares.
   if (call.name === SEARCH_SITE) {
     return { ok: true, id: call.id, name: SEARCH_SITE, args: { query: (args as { query: string }).query } }
   }
+  if (call.name === CITE_PAGE) {
+    return { ok: true, id: call.id, name: CITE_PAGE, args: { quotes: (args as { quotes: string[] }).quotes } }
+  }
   return { ok: true, id: call.id, name: FETCH_PAGE, args: { url: (args as { url: string }).url } }
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+function isValidArg(value: unknown, kind: ArgKind): boolean {
+  if (kind === 'string') return isNonBlankString(value)
+  return Array.isArray(value) && value.length > 0 && value.every(isNonBlankString)
+}
+
+function argProblem(key: string, kind: ArgKind): string {
+  return kind === 'string' ? `missing "${key}" argument` : `"${key}" must be a non-empty list of strings`
 }

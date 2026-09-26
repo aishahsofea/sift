@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
-import { assembleAgentMessages } from './promptAssembly'
+import { assembleAgentMessages, pageText } from './promptAssembly'
 
 const page: ExtractedPage = {
   url: 'https://example.com/article',
@@ -11,8 +11,8 @@ const page: ExtractedPage = {
   charsOmitted: 0,
 }
 
-const withSearch = { searchEnabled: true }
-const withoutSearch = { searchEnabled: false }
+const withSearch = { searchEnabled: true, citeEnabled: true }
+const withoutSearch = { searchEnabled: false, citeEnabled: true }
 
 describe('assembleAgentMessages', () => {
   it('puts a system message with the page title, URL, and content first', () => {
@@ -47,16 +47,87 @@ describe('assembleAgentMessages', () => {
   })
 
   it('promises no search when no Tavily key is configured', () => {
-    const [system] = assembleAgentMessages(page, [], 'When does it launch?', { searchEnabled: false })
+    const [system] = assembleAgentMessages(page, [], 'When does it launch?', withoutSearch)
     expect(system.content).not.toContain('search_site')
     expect(system.content).toContain('no search available')
   })
 
   it('keeps the page in the prompt regardless of search, so page and web can combine', () => {
     const [enabled] = assembleAgentMessages(page, [], 'q', withSearch)
-    const [disabled] = assembleAgentMessages(page, [], 'q', { searchEnabled: false })
+    const [disabled] = assembleAgentMessages(page, [], 'q', withoutSearch)
     expect(enabled.content).toContain(page.content)
     expect(disabled.content).toContain(page.content)
+  })
+
+  describe('citation (ADR 0005)', () => {
+    it('tells the model to call cite_page before answering from the page, with passages copied word for word', () => {
+      const [system] = assembleAgentMessages(page, [], 'q', withSearch)
+      expect(system.content).toContain('call cite_page')
+      expect(system.content).toContain('copied word for word')
+      expect(system.content.indexOf('cite_page')).toBeLessThan(system.content.indexOf('Page content:'))
+    })
+
+    it('asks for a few short passages, since long ones get edited when copied', () => {
+      const [withBoth] = assembleAgentMessages(page, [], 'q', withSearch)
+      const [noSearch] = assembleAgentMessages(page, [], 'q', withoutSearch)
+      for (const system of [withBoth, noSearch]) {
+        expect(system.content).toContain('up to three short passages (a sentence or less each)')
+      }
+    })
+
+    it('asks for citations whether or not search is available, since it needs no network', () => {
+      const [system] = assembleAgentMessages(page, [], 'q', withoutSearch)
+      expect(system.content).toContain('call cite_page')
+    })
+
+    it('gives search and the page their own path, and keeps cite_page off the search one', () => {
+      const [system] = assembleAgentMessages(page, [], 'q', withSearch)
+      const [pagePath, sitePath] = system.content.split('\n').filter((line) => /^[12]\. /.test(line))
+      expect(pagePath).toContain('From the page content')
+      expect(pagePath).toContain('call cite_page')
+      expect(sitePath).toContain('From the site')
+      expect(sitePath).toContain('call search_site')
+      expect(sitePath).toContain('call fetch_page')
+      expect(sitePath).toContain("Don't call cite_page on this path")
+    })
+
+    it('says only that the page cannot be answered from with no search, when there is no search', () => {
+      const [system] = assembleAgentMessages(page, [], 'q', withoutSearch)
+      expect(system.content).not.toContain('two ways')
+      expect(system.content).toContain('no search available')
+    })
+
+    it('says nothing about cite_page when it is not offered, and keeps the single-path wording', () => {
+      const [system] = assembleAgentMessages(page, [], 'q', { searchEnabled: true, citeEnabled: false })
+      expect(system.content).not.toContain('cite_page')
+      expect(system.content).not.toContain('two ways')
+      expect(system.content).toContain('Answer from the page content below whenever it covers the question.')
+    })
+
+    it('is identical from one question to the next, so the cached prefix survives', () => {
+      const [first] = assembleAgentMessages(page, [], 'first question', withSearch)
+      const [second] = assembleAgentMessages(page, [], 'second question', withSearch)
+      expect(second.content).toBe(first.content)
+    })
+  })
+
+  describe('pageText', () => {
+    const withByline: ExtractedPage = { ...page, byline: 'AUTHORS\nJack Lindsey†' }
+
+    it('is what the prompt presents as the page: title, byline and content', () => {
+      const text = pageText(withByline)
+      expect(text).toContain(withByline.title)
+      expect(text).toContain('Jack Lindsey†')
+      expect(text).toContain(withByline.content)
+    })
+
+    it('leaves out the URL, which is metadata rather than page text', () => {
+      expect(pageText(withByline)).not.toContain(withByline.url)
+    })
+
+    it('has nothing extra for a page with no byline', () => {
+      expect(pageText(page)).toBe(`${page.title}\n${page.content}`)
+    })
   })
 
   describe('when the page was truncated', () => {
@@ -129,6 +200,14 @@ describe('assembleAgentMessages', () => {
     const history: ChatTurn[] = [{ role: 'assistant', content: 'A product launch.', source: 'web' }]
     const messages = assembleAgentMessages(page, history, 'When?', withSearch)
     expect(messages[1]).not.toHaveProperty('source')
+  })
+
+  it('drops the verified quotes from history turns too', () => {
+    const history: ChatTurn[] = [
+      { role: 'assistant', content: 'A product launch.', source: 'page', quotes: ['The launch date is March 3rd.'] },
+    ]
+    const messages = assembleAgentMessages(page, history, 'When?', withSearch)
+    expect(messages[1]).toEqual({ role: 'assistant', content: 'A product launch.' })
   })
 
   it('drops the truncation fields from history turns too', () => {

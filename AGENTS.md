@@ -25,16 +25,20 @@ loop — the model decides when to search; see
 - `npm run dev` — extension shell with HMR. `npm run dev:content` — content
   script watcher, needs its own terminal. Run both during development.
 - `npm run typecheck` — `tsc --noEmit`.
-- `npm run test` — `vitest run`. Unit tests cover pure logic only; anything
-  touching `chrome.*` isn't tested here.
+- `npm run test` — `vitest run`. Unit tests cover pure logic, plus the agent loop
+  with the model, Tavily and `chrome.storage` faked (`agentLoop.test.ts`). Anything
+  that needs a real `chrome.*` isn't tested here.
 - `npm run test:nebius` — sanity-checks the Nebius Token Factory + Nemotron
   round trip (lists available models, runs one chat completion). Requires
   `.env` with `NEBIUS_API_KEY`.
 - `npm run test:tools` — live spike for native tool calling on Nemotron
-  (stubbed `search_site`/`fetch_page` tools, no Tavily calls). Pass model IDs
-  to compare models, `--only=<case-id>` to rerun one case (or a group like
-  `force`), `--repeat=<n>` to gauge flaky behavior. Requires `.env` with
-  `NEBIUS_API_KEY`.
+  (stubbed `search_site`/`fetch_page` tools, no Tavily calls) and for the
+  `cite_page` quote check. Pass model IDs to compare models, `--only=<case-id>`
+  to rerun one case (or a group like `force` or `cite`), `--repeat=<n>` to gauge
+  flaky behavior, `--no-cite` for the pre-`cite_page` baseline its cost is
+  measured against. It keeps its own copy of the prompt and tool definitions, so
+  a change to `src/background/nebius/{promptAssembly,tools}.ts` wording needs the
+  same change here and a re-run. Requires `.env` with `NEBIUS_API_KEY`.
 
 ## Environment
 
@@ -49,9 +53,10 @@ loop — the model decides when to search; see
 
 ## Structure
 
-- `src/background/` — service worker. `handlers/` holds the agent loop and
-  page extraction, `nebius/` the client plus prompt assembly and tool schema,
-  `tavily/` the site-scoped search, `history/` per-tab session history.
+- `src/background/` — service worker. `handlers/` holds the agent loop, page
+  extraction, answer labelling and `cite_page` quote verification, `nebius/` the
+  client plus prompt assembly and tool schema, `tavily/` the site-scoped search,
+  `history/` per-tab session history.
 - `src/content/` — content script, extracts readable page text via
   `@mozilla/readability`, plus the byline Readability leaves behind
   (`byline.ts`).
