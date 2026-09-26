@@ -1,5 +1,10 @@
 export const TRUNCATION_CHAR_LIMIT = 120_000
 
+// A byline is a handful of names plus affiliations and footnote legends; a
+// candidate longer than this means the selector matched a page wrapper, so it's
+// rejected rather than truncated (see src/content/byline.ts).
+export const BYLINE_CHAR_LIMIT = 1_000
+
 // 20 turns = 10 user/assistant pairs of prior context sent with each new question.
 export const MAX_HISTORY_TURNS = 20
 

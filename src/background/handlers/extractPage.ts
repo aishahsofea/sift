@@ -39,7 +39,7 @@ export async function extractPage(tabId: number): Promise<BackgroundResponse> {
   }
 
   console.log(
-    `[Sift] Extracted page for tab ${tabId}: "${result.page.title}" via ${result.page.extractionMethod}, ${result.page.content.length} chars${result.page.truncated ? ' (truncated)' : ''}`,
+    `[Sift] Extracted page for tab ${tabId}: "${result.page.title}" via ${result.page.extractionMethod}, ${result.page.content.length} chars${result.page.truncated ? ' (truncated)' : ''}${result.page.byline ? ', byline found' : ''}`,
   )
   await setExtractedPage(tabId, result.page)
   return { type: 'EXTRACT_PAGE_RESULT', ok: true, page: result.page }

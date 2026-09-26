@@ -2,6 +2,12 @@ export interface ExtractedPage {
   url: string
   title: string
   content: string
+  /**
+   * Author/affiliation/publication line, when the page has one. Separate from
+   * `content` because on Distill-style layouts it lives outside the article
+   * element Readability selects, so it is absent from `content` entirely (#6).
+   */
+  byline?: string
   extractionMethod: 'readability' | 'raw-text'
   truncated: boolean
 }

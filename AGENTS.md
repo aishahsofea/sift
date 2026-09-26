@@ -53,7 +53,8 @@ loop — the model decides when to search; see
   page extraction, `nebius/` the client plus prompt assembly and tool schema,
   `tavily/` the site-scoped search, `history/` per-tab session history.
 - `src/content/` — content script, extracts readable page text via
-  `@mozilla/readability`.
+  `@mozilla/readability`, plus the byline Readability leaves behind
+  (`byline.ts`).
 - `src/sidepanel/` — React side panel (the main UI). `src/options/` — React
   options page for API keys.
 - `src/shared/` — types, message contracts, storage keys, and constants

@@ -1,5 +1,6 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability'
 import { truncate } from '../shared/truncate'
+import { extractByline } from './byline'
 import type { ExtractedPage, UnreadableReason } from '../shared/types'
 import type { ContentScriptMessage } from '../shared/messages'
 
@@ -14,6 +15,7 @@ function extract(): ExtractedPage | ExtractionFailure {
     let title = document.title
     let content = ''
     let extractionMethod: ExtractedPage['extractionMethod'] = 'raw-text'
+    let readabilityByline: string | null | undefined
 
     if (isProbablyReaderable(clone)) {
       const article = new Readability(clone).parse()
@@ -21,6 +23,7 @@ function extract(): ExtractedPage | ExtractionFailure {
         title = article.title?.trim() || title
         content = article.textContent.trim()
         extractionMethod = 'readability'
+        readabilityByline = article.byline
       }
     }
 
@@ -33,11 +36,14 @@ function extract(): ExtractedPage | ExtractionFailure {
     }
 
     const { content: truncatedContent, truncated } = truncate(content)
+    // Read from the live document: .parse() above mutated the clone.
+    const byline = extractByline(document, readabilityByline)
 
     return {
       url: document.URL,
       title,
       content: truncatedContent,
+      ...(byline ? { byline } : {}),
       extractionMethod,
       truncated,
     }
