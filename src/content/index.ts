@@ -15,7 +15,6 @@ function extract(): ExtractedPage | ExtractionFailure {
     let title = document.title
     let content = ''
     let extractionMethod: ExtractedPage['extractionMethod'] = 'raw-text'
-    let readabilityByline: string | null | undefined
 
     if (isProbablyReaderable(clone)) {
       const article = new Readability(clone).parse()
@@ -23,7 +22,6 @@ function extract(): ExtractedPage | ExtractionFailure {
         title = article.title?.trim() || title
         content = article.textContent.trim()
         extractionMethod = 'readability'
-        readabilityByline = article.byline
       }
     }
 
@@ -37,7 +35,7 @@ function extract(): ExtractedPage | ExtractionFailure {
 
     const { content: truncatedContent, truncated } = truncate(content)
     // Read from the live document: .parse() above mutated the clone.
-    const byline = extractByline(document, readabilityByline)
+    const byline = extractByline(document)
 
     return {
       url: document.URL,

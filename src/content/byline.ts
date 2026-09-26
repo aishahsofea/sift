@@ -4,18 +4,25 @@ import { BYLINE_CHAR_LIMIT } from '../shared/constants'
 // whichever candidate normalises to something usable wins, so a precise match
 // beats a lucky one.
 //
-// The Distill selectors come first because that layout is the reason this exists
-// (#6): on transformer-circuits.pub and distill.pub the author block sits outside
-// <d-article>, so Readability never sees it — and the block carries more than
-// names (affiliations, publication date, and the `† Lead Contributor` legend that
-// says which name means what).
-const DISTILL_SELECTORS = ['d-byline', '.d-byline']
+// The byline-block selectors come first because that layout is the reason this
+// exists (#6): on transformer-circuits.pub and distill.pub the author block sits
+// outside <d-article>, so Readability never sees it — and the block carries more
+// than names (affiliations, publication date, and the `† Lead Contributor` legend
+// that says which name means what).
+//
+// The class selector comes before the `d-byline` element on purpose. On
+// transformer-circuits.pub both exist at once and only the class one is real: the
+// page's script builds `div.d-byline-container` (the populated 601-char block)
+// and leaves the static `<d-byline>` custom element sitting there unfilled,
+// reading "Authors Affiliations Published Not published yet. DOI No DOI yet."
+// forever. distill.pub is the other way round — its `<d-byline>` is populated —
+// but its wrapper is `div.byline`, so the class selector catches that too.
+const BYLINE_BLOCK_SELECTORS = ['[class*="byline"]', 'd-byline']
 
 // Last resort: class names that usually mean a byline but sometimes mean a
 // sidebar or a page wrapper. The length cap in normaliseByline is what keeps a
 // wrong match out of the prompt.
 const GENERIC_SELECTORS = [
-  '[class*="byline"]',
   '[itemprop="author"]',
   '[rel="author"]',
   '.authors',
@@ -31,11 +38,17 @@ const META_NAMES = ['author', 'article:author', 'dc.creator', 'parsely-author', 
  *
  * Reads the live document, not Readability's clone — .parse() mutates what it's
  * given, so the clone is no longer a faithful copy by the time it returns.
+ *
+ * Deliberately ignores Readability's own `article.byline`. Its rule is a
+ * substring match for `author` on class and id, so on any Wikipedia article with
+ * an authority-control box (`class="navbox authority-control"` — "authority"
+ * contains "author") it returns "Authority control databases" as the byline.
+ * `rel`/`itemprop`/`.author`/`[class*="byline"]` below cover the trustworthy part
+ * of that rule; missing a byline beats inventing one.
  */
-export function extractByline(doc: Document, readabilityByline?: string | null): string | undefined {
+export function extractByline(doc: Document): string | undefined {
   return pickByline([
-    ...DISTILL_SELECTORS.map((selector) => textOf(doc, selector)),
-    readabilityByline,
+    ...BYLINE_BLOCK_SELECTORS.map((selector) => textOf(doc, selector)),
     ...metaBylines(doc),
     ...GENERIC_SELECTORS.map((selector) => textOf(doc, selector)),
   ])
@@ -68,8 +81,15 @@ export function normaliseByline(raw: string | null | undefined, limit: number = 
     .join('\n')
 
   if (normalised.length < 2 || normalised.length > limit) return undefined
+  if (UNFILLED_TEMPLATE.test(normalised)) return undefined
   return normalised
 }
+
+// Distill's byline template before its script fills it in. The selector order
+// above already prefers the populated block on a settled page, but the content
+// script can be injected while the page is still rendering, and "Not published
+// yet" as the byline is worse than no byline.
+const UNFILLED_TEMPLATE = /not published yet|no doi yet/i
 
 function textOf(doc: Document, selector: string): string | undefined {
   const element = doc.querySelector(selector)

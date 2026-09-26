@@ -31,6 +31,11 @@ describe('normaliseByline', () => {
   it('rejects a single stray character', () => {
     expect(normaliseByline('•')).toBeUndefined()
   })
+
+  it("rejects Distill's unfilled byline template", () => {
+    const placeholder = 'Authors Affiliations Published Not published yet. DOI No DOI yet.'
+    expect(normaliseByline(placeholder)).toBeUndefined()
+  })
 })
 
 describe('pickByline', () => {
