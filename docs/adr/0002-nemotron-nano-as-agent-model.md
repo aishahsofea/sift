@@ -54,3 +54,5 @@ query text, which was already shown in Phase 4 to cost relevance.
 - Unrelated but adjacent: 4 of the 5 IDs in `NEMOTRON_CANDIDATES` no longer
   exist on this account, so the candidate list is doing almost no work. Only
   Nano matches; everything else falls through to "first Nemotron in the list".
+  Pruned in [#4](https://github.com/aishahsofea/sift/issues/4) — the list is now
+  Nano then Super, both verified against a live `GET /v1/models`.

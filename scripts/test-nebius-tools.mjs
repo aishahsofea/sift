@@ -33,10 +33,7 @@ if (!apiKey) {
 // Same preference order as test-nebius.mjs and src/background/nebius/modelDiscovery.ts.
 const NEMOTRON_CANDIDATES = [
   "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
-  "nvidia/Nemotron-3-Nano-30B-A3B",
-  "nvidia/Nemotron-Nano-V2-12b",
-  "nvidia/Nemotron-3-Nano-Omni",
-  "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",
+  "nvidia/nemotron-3-super-120b-a12b",
 ];
 
 // ---------------------------------------------------------------------------
