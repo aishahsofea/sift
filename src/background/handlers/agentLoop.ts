@@ -1,6 +1,6 @@
 import { MAX_TOOL_ROUNDS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
-import type { ChatTurn } from '../../shared/types'
+import type { ChatTurn, ExtractedPage } from '../../shared/types'
 import { appendHistoryTurns, getExtractedPage, getHistory } from '../history/sessionHistory'
 import { getApiKeys } from '../keys'
 import { streamAgentTurn } from '../nebius/client'
@@ -9,6 +9,7 @@ import { parseToolCall, type ParsedToolCall } from '../nebius/schema'
 import { containsToolMarkup, FORCE_NUDGE, SEARCH_SITE, TOOLS } from '../nebius/tools'
 import { extractTavily, searchTavily } from '../tavily/client'
 import { scopeToDomain } from '../tavily/scopeToDomain'
+import { deriveSource } from './answerSource'
 
 // State the loop carries across rounds, scoped to this one question.
 interface LoopState {
@@ -62,7 +63,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       })
 
       if (!toolCalls.length) {
-        await finish(port, tabId, question, content, state)
+        await finish(port, tabId, question, content, state, page)
         return
       }
 
@@ -106,6 +107,7 @@ async function finish(
   question: string,
   content: string,
   state: LoopState,
+  page: ExtractedPage,
 ): Promise<void> {
   const answer = content.trimEnd()
   if (!answer) {
@@ -117,15 +119,21 @@ async function finish(
     throw new Error('The model returned an unparsed tool call instead of an answer.')
   }
 
-  // Derived from the tool calls that actually ran, never from a claim in the
-  // model's own output (ADR 0001).
-  const source: NonNullable<ChatTurn['source']> = state.usedWeb ? 'web' : 'page'
+  // Derived from what actually happened, never from a claim in the model's own
+  // output (ADR 0001) — and not from the absence of a tool call alone (ADR 0005).
+  const source = deriveSource({ usedWeb: state.usedWeb, pageTruncated: page.truncated })
 
-  await appendHistoryTurns(tabId, [
-    { role: 'user', content: question },
-    { role: 'assistant', content: answer, source },
-  ])
-  post(port, { type: 'ASK_DONE', fullText: answer, source })
+  // One object is both persisted and posted, so the panel shows live exactly what a
+  // reload will read back from history.
+  const turn: ChatTurn = {
+    role: 'assistant',
+    content: answer,
+    source,
+    ...(page.truncated ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
+  }
+
+  await appendHistoryTurns(tabId, [{ role: 'user', content: question }, turn])
+  post(port, { type: 'ASK_DONE', turn })
 }
 
 // Runs one validated tool call and returns whatever should go back as its result.

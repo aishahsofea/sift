@@ -51,8 +51,16 @@ like "what else have they written?" is searched under the author's name rather
 than the pronoun — and can pull up a full result page when a snippet isn't
 enough. It gets three rounds of that before it has to answer with whatever it
 has. The side panel names each search as it runs, and every answer is labeled
-**from the page** or **from the web** according to whether a search actually
-returned anything, not according to what the model says it did.
+from what actually happened, not from what the model says it did: **from the
+web** when a search returned something, **from the page** when the model held
+the whole page and searched nothing, and an amber **unverified** when an answer
+can't be traced to the page (see below).
+
+Pages longer than 120,000 characters are cut short. The panel says so before you
+ask anything, and again on each answer given against a cut page. The model is
+told how many characters it can't see and to search for anything past the cut,
+and an answer on a cut page with no search behind it is labeled **unverified**,
+since the model only held a fragment of the page.
 
 Answers stream as they're written. Pages that can't be read (e.g. `chrome://`
 pages, the built-in PDF viewer) show a disabled "Can't read this page" state

@@ -33,7 +33,7 @@ function extract(): ExtractedPage | ExtractionFailure {
       return { reason: 'no-content', message: 'No readable text found on this page.' }
     }
 
-    const { content: truncatedContent, truncated } = truncate(content)
+    const { content: truncatedContent, truncated, charsOmitted } = truncate(content)
     // Read from the live document: .parse() above mutated the clone.
     const byline = extractByline(document)
 
@@ -44,6 +44,7 @@ function extract(): ExtractedPage | ExtractionFailure {
       ...(byline ? { byline } : {}),
       extractionMethod,
       truncated,
+      charsOmitted,
     }
   } catch (error) {
     return {

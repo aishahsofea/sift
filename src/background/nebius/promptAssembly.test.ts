@@ -8,9 +8,11 @@ const page: ExtractedPage = {
   content: 'The launch date is March 3rd.',
   extractionMethod: 'readability',
   truncated: false,
+  charsOmitted: 0,
 }
 
 const withSearch = { searchEnabled: true }
+const withoutSearch = { searchEnabled: false }
 
 describe('assembleAgentMessages', () => {
   it('puts a system message with the page title, URL, and content first', () => {
@@ -57,6 +59,52 @@ describe('assembleAgentMessages', () => {
     expect(disabled.content).toContain(page.content)
   })
 
+  describe('when the page was truncated', () => {
+    const truncatedPage: ExtractedPage = { ...page, truncated: true, charsOmitted: 126_323 }
+
+    it('names how many characters were cut and says the later sections are missing', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'What is the jailbreak attack?', withSearch)
+      expect(system.content).toContain('cut off')
+      expect(system.content).toContain('126,323 characters')
+      expect(system.content).toContain('every section after the cut is missing')
+    })
+
+    it('says a section the content only names or summarizes is still missing', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', withSearch)
+      expect(system.content).toContain('names or summarizes')
+      expect(system.content).toContain('a summary is not the section')
+    })
+
+    it('points at search as the way to reach the missing part when search is available', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', withSearch)
+      expect(system.content).toContain('call search_site for it')
+    })
+
+    it('tells the model to say the page was cut off when search is not available', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', withoutSearch)
+      expect(system.content).toContain('say the page was cut off')
+      expect(system.content).not.toContain('search_site')
+    })
+
+    it('puts the notice before the page content, and leaves the content itself untouched', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', withSearch)
+      expect(system.content.indexOf('cut off')).toBeLessThan(system.content.indexOf('Page content:'))
+      expect(system.content).toContain(truncatedPage.content)
+    })
+
+    it('is identical from one question to the next, so the cached prefix survives', () => {
+      const [first] = assembleAgentMessages(truncatedPage, [], 'first question', withSearch)
+      const [second] = assembleAgentMessages(truncatedPage, [], 'second question', withSearch)
+      expect(second.content).toBe(first.content)
+    })
+  })
+
+  it('says nothing about truncation when the page is whole', () => {
+    const [system] = assembleAgentMessages(page, [], 'q', withSearch)
+    expect(system.content).not.toContain('cut off')
+    expect(system.content).not.toContain('characters')
+  })
+
   it('appends the new question as the final user message', () => {
     const messages = assembleAgentMessages(page, [], 'When does it launch?', withSearch)
     expect(messages[messages.length - 1]).toEqual({ role: 'user', content: 'When does it launch?' })
@@ -81,5 +129,13 @@ describe('assembleAgentMessages', () => {
     const history: ChatTurn[] = [{ role: 'assistant', content: 'A product launch.', source: 'web' }]
     const messages = assembleAgentMessages(page, history, 'When?', withSearch)
     expect(messages[1]).not.toHaveProperty('source')
+  })
+
+  it('drops the truncation fields from history turns too', () => {
+    const history: ChatTurn[] = [
+      { role: 'assistant', content: 'A product launch.', source: 'unverified', truncated: true, charsOmitted: 126_323 },
+    ]
+    const messages = assembleAgentMessages(page, history, 'When?', withSearch)
+    expect(messages[1]).toEqual({ role: 'assistant', content: 'A product launch.' })
   })
 })

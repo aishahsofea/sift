@@ -2,9 +2,7 @@ import { useCallback, useState } from 'react'
 import { ASK_PORT_NAME, type AskPortMessage, type AskPortRequest } from '../../shared/messages'
 import type { AgentStep, ChatTurn } from '../../shared/types'
 
-export type AskResult =
-  | { ok: true; fullText: string; source: NonNullable<ChatTurn['source']> }
-  | { ok: false; message: string }
+export type AskResult = { ok: true; turn: ChatTurn } | { ok: false; message: string }
 
 export function useAskStream() {
   const [active, setActive] = useState(false)
@@ -38,7 +36,7 @@ export function useAskStream() {
             setText((prev) => prev + message.delta)
             break
           case 'ASK_DONE':
-            settle({ ok: true, fullText: message.fullText, source: message.source })
+            settle({ ok: true, turn: message.turn })
             break
           case 'ASK_ERROR':
             settle({ ok: false, message: message.message })

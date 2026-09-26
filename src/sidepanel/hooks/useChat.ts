@@ -41,7 +41,7 @@ export function useChat(tabId: number | null) {
       setError(result.message)
       return
     }
-    setTurns((prev) => [...prev, { role: 'assistant', content: result.fullText, source: result.source }])
+    setTurns((prev) => [...prev, result.turn])
   }
 
   async function clear() {

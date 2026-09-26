@@ -50,6 +50,7 @@ function buildAgentSystemPrompt(page: ExtractedPage, { searchEnabled }: AgentPro
     'Answer from the page content below whenever it covers the question.',
     ...toolInstructions,
     'Never answer from outside knowledge. If neither the page nor the search results cover the question, say so.',
+    ...truncationNotice(page, searchEnabled),
     '',
     `Page title: ${page.title}`,
     `Page URL: ${page.url}`,
@@ -63,4 +64,20 @@ function buildAgentSystemPrompt(page: ExtractedPage, { searchEnabled }: AgentPro
     'Page content:',
     page.content,
   ].join('\n')
+}
+
+// Without this the model reads a cut page as the whole page, so "the page doesn't
+// cover it, search" has nothing to fire on — even when it can see a heading and a
+// summary for a section whose body was cut (#5, #12). It names the cut in chars, and
+// says outright that a summary is not the section: given an answer-shaped summary,
+// Nano sometimes counts the question as covered and answers without searching.
+// Constant for a given page, so it doesn't disturb the cacheable prefix.
+function truncationNotice(page: ExtractedPage, searchEnabled: boolean): string[] {
+  if (!page.truncated) return []
+
+  const omitted = page.charsOmitted.toLocaleString('en-US')
+  const action = searchEnabled ? 'call search_site for it' : 'say the page was cut off'
+  return [
+    `The page content below is cut off: its last ${omitted} characters are not included, so every section after the cut is missing. A section the content only names or summarizes is one of them, and a summary is not the section. Do not answer a question about a missing section from the page: ${action}.`,
+  ]
 }
