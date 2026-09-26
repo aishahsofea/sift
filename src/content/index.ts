@@ -1,5 +1,6 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability'
 import { truncate } from '../shared/truncate'
+import { extractByline } from './byline'
 import type { ExtractedPage, UnreadableReason } from '../shared/types'
 import type { ContentScriptMessage } from '../shared/messages'
 
@@ -33,11 +34,14 @@ function extract(): ExtractedPage | ExtractionFailure {
     }
 
     const { content: truncatedContent, truncated } = truncate(content)
+    // Read from the live document: .parse() above mutated the clone.
+    const byline = extractByline(document)
 
     return {
       url: document.URL,
       title,
       content: truncatedContent,
+      ...(byline ? { byline } : {}),
       extractionMethod,
       truncated,
     }

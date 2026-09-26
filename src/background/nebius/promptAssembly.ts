@@ -53,6 +53,13 @@ function buildAgentSystemPrompt(page: ExtractedPage, { searchEnabled }: AgentPro
     '',
     `Page title: ${page.title}`,
     `Page URL: ${page.url}`,
+    // Its own section, above the content: on Distill-style pages this text is not
+    // in page.content at all, and it is what answers "who wrote this?" (#6). The
+    // label says "on the page" so the model reads it as page content to answer
+    // from, not as outside knowledge it has been told never to use.
+    ...(page.byline
+      ? ['Page byline, shown on the page (authors, affiliations, publication details):', page.byline]
+      : []),
     'Page content:',
     page.content,
   ].join('\n')

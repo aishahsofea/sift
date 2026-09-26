@@ -21,6 +21,18 @@ describe('assembleAgentMessages', () => {
     expect(system.content).toContain(page.content)
   })
 
+  it('includes the byline when the page has one', () => {
+    const withByline: ExtractedPage = { ...page, byline: 'AUTHORS\nJack Lindsey†\n† Lead Contributor' }
+    const [system] = assembleAgentMessages(withByline, [], 'Who is the lead contributor?', withSearch)
+    expect(system.content).toContain('Jack Lindsey†')
+    expect(system.content).toContain('† Lead Contributor')
+  })
+
+  it('says nothing about a byline when the page has none', () => {
+    const [system] = assembleAgentMessages(page, [], 'Who wrote this?', withSearch)
+    expect(system.content).not.toContain('byline')
+  })
+
   it('scopes the prompt to the page hostname', () => {
     const [system] = assembleAgentMessages(page, [], 'When does it launch?', withSearch)
     expect(system.content).toContain('example.com')
