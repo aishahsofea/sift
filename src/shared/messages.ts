@@ -29,5 +29,6 @@ export type AskPortRequest = { type: 'START_ASK'; tabId: number; question: strin
 export type AskPortMessage =
   | { type: 'ASK_STEP'; step: AgentStep }
   | { type: 'ASK_CHUNK'; delta: string }
-  | { type: 'ASK_DONE'; fullText: string; source: NonNullable<ChatTurn['source']> }
+  // The assistant turn exactly as stored in history, so a live answer and a reloaded one match.
+  | { type: 'ASK_DONE'; turn: ChatTurn }
   | { type: 'ASK_ERROR'; message: string }

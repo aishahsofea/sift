@@ -3,6 +3,7 @@ import type { BackgroundRequest, BackgroundResponse } from '../shared/messages'
 import { ChatInput } from './components/ChatInput'
 import { ChatThread } from './components/ChatThread'
 import { MissingApiKeysState } from './components/MissingApiKeysState'
+import { TruncationNotice } from './components/TruncationNotice'
 import { UnreadablePageState } from './components/UnreadablePageState'
 import { useActiveTab } from './hooks/useActiveTab'
 import { useChat } from './hooks/useChat'
@@ -38,6 +39,7 @@ export default function App() {
 
       {chatReady && (
         <>
+          {status.page.truncated && <TruncationNotice charsOmitted={status.page.charsOmitted} />}
           <ChatThread turns={turns} />
           {error && (
             <p role="alert" className="chat-error">
