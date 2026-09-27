@@ -215,8 +215,8 @@ Nano, on one day (2026-09-27) — enough to flip ADR 0005 to `accepted` (its sta
 was "#3, which has to report the numbers"). It does not close ADR 0005/0006's broader
 "Still owed" asks: quote-verification pass rate on more than three real pages, false
 abstention on a varied set beyond this one page and question, or the same on more than
-one model or more than one day. A follow-up issue for that breadth is filed separately
-rather than folded into this one.
+one model or more than one day. That breadth is filed as
+[#22](https://github.com/aishahsofea/sift/issues/22) rather than folded into this one.
 
 ## Consequences
 

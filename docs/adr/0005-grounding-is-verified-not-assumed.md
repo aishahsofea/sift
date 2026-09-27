@@ -351,8 +351,8 @@ test:eval`, Nemotron 3 Nano):
   labelled `unverified` anyway, because ADR 0006 rule 6 caps the label without a search,
   even when the quote is genuinely from the head.
 - **The same on more than one model, and on more than one day.** Not answered. One
-  model (Nemotron 3 Nano), one day (2026-09-27). Open, tracked as a follow-up issue
-  rather than folded into #3.
+  model (Nemotron 3 Nano), one day (2026-09-27). Open, tracked as #22 rather than
+  folded into #3.
 
 The whole loop has also not been click-tested in Chrome; everything above, including
 ADR 0007's, is the real API driven from Node, plus unit tests of the handler with the

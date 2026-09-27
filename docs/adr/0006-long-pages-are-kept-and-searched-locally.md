@@ -200,8 +200,7 @@ handled: an answer that ended with text imitating a `cite_page` call.
 - **False abstention on a cut page.** 15 of 15 runs gave a substantive, verified-quote
   answer; 0 true abstentions.
 - **Quote pass rates on more real pages, and the same on more than one model.** Not
-  answered — one real page, one model. Tracked as a follow-up issue rather than folded
-  into #3.
+  answered — one real page, one model. Tracked as #22 rather than folded into #3.
 - **A click-through in Chrome: storage quota behaviour, a very long page, the banner.**
   Still not done. This is what keeps this record `proposed`.
 
