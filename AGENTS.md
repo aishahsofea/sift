@@ -42,6 +42,14 @@ loop — the model decides when to search; see
   measured against. It keeps its own copy of the prompt and tool definitions, so
   a change to `src/background/nebius/{promptAssembly,tools}.ts` wording needs the
   same change here and a re-run. Requires `.env` with `NEBIUS_API_KEY`.
+- `npm run test:eval` — `vitest run --config vitest.eval.config.ts`, the
+  grounding regression net (issue #3): drives the real `runAgentLoop` against
+  the live Nebius API (`sessionHistory`/`keys`/`tavily/client` mocked, nothing
+  else), on a fictional-site fixture and a real long page
+  (`transformer-circuits.pub`, the #5 page). `EVAL_REPEATS` controls how many
+  times each case repeats (default 5). Separate from `npm run test` (a
+  different Vitest config, `*.eval.ts` not `*.test.ts`) because these calls hit
+  the real API and cost real time; see [ADR 0007](docs/adr/0007-grounding-eval-set.md).
 
 ## Environment
 

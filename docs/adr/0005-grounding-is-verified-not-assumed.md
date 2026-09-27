@@ -1,12 +1,14 @@
 # 5. Grounding is verified, not inferred from the absence of a tool call
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-26
 - Related: [ADR 0001](0001-model-driven-agent-loop.md),
-  [ADR 0004](0004-fetch-page-url-allowlist.md)
+  [ADR 0004](0004-fetch-page-url-allowlist.md),
+  [ADR 0007](0007-grounding-eval-set.md)
 - Built: rules 1 and 3 in #12, rule 2 in #10, the truncation fix in #11
-  ([ADR 0006](0006-long-pages-are-kept-and-searched-locally.md)). Still `proposed`
-  because #3, which has to report the numbers under Verification, does not exist yet.
+  ([ADR 0006](0006-long-pages-are-kept-and-searched-locally.md)). #3
+  ([ADR 0007](0007-grounding-eval-set.md)) reported the numbers under "Still owed to #3"
+  below and this moved to `accepted`.
 
 ## Context
 
@@ -330,21 +332,31 @@ Two things a second click-through turned up.
   are unchanged; capping them, or loosening the note so the model may use the rest of
   the page, are both open and both trade grounding or completeness for speed.
 
-### Still owed to #3
+### Still owed to #3 — answered by [ADR 0007](0007-grounding-eval-set.md)
 
-Before this moves to `accepted`, #3 has to report on cases it adds:
+What #3 asked this record to report, and what's now measured (2026-09-27, `npm run
+test:eval`, Nemotron 3 Nano):
 
-- The ungrounded-answer-labelled-`page` rate, which has to be 0. Nothing above
-  tests it: no case gives the model an answer from its own memory to quote around.
-- The quote-verification pass rate on real pages, on more than three of them. The
-  fixture is a short ASCII page and one paragraph of typography, not real markup.
-- The false-abstention rate on a varied set. The only data point is above: an
-  honest "the page doesn't say" answer had no quote to verify in 8 of 9 runs, so it
-  was labelled `unverified`.
-- The same on more than one model, and on more than one day.
+- **The ungrounded-answer-labelled-`page` rate, which has to be 0.** Measured on the
+  real #5 page and question, across 3 live batches of 15 (45 runs): **0 of 32
+  `page`/`page+web`-labelled answers showed no sign of the real mechanism.** Getting a
+  trustworthy check took two rounds of correcting the eval's own content-gate regex —
+  see ADR 0007's Verification section; the first ten "failures" it produced were the
+  eval being wrong, not the product.
+- **The quote-verification pass rate on real pages.** Still only this one real page,
+  not "more than three" — narrower than asked. See "Scope honesty" in ADR 0007.
+- **The false-abstention rate.** 15/15 runs on a real, cut page gave a substantive,
+  verified-quote answer — 0 true abstentions. It surfaced a related, real finding ADR
+  0006 asked for and didn't have (see its own "Still owed" update): 12 of those 15 were
+  labelled `unverified` anyway, because ADR 0006 rule 6 caps the label without a search,
+  even when the quote is genuinely from the head.
+- **The same on more than one model, and on more than one day.** Not answered. One
+  model (Nemotron 3 Nano), one day (2026-09-27). Open, tracked as #22 rather than
+  folded into #3.
 
-The whole loop has also not been click-tested in Chrome; everything above is the
-real API driven from Node, plus unit tests of the handler with the model faked.
+The whole loop has also not been click-tested in Chrome; everything above, including
+ADR 0007's, is the real API driven from Node, plus unit tests of the handler with the
+model faked.
 
 ## Consequences
 

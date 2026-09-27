@@ -117,6 +117,9 @@ npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke te
 npm run test:tools  # scripts/test-nebius-tools.mjs — live tool-calling spike for the agent loop, reads .env
                     # (--no-cite runs it without cite_page, the baseline for that round's cost;
                     # --only=cut runs the long-page cases for search_page)
+npm run test:eval   # src/eval/*.eval.ts — the grounding regression net (issue #3), reads .env.
+                    # Drives the real agent loop against the live API; set EVAL_REPEATS to
+                    # change how many times each case repeats (default 5).
 ```
 
 ## Project layout and design decisions
