@@ -1,7 +1,19 @@
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type ExtraProps } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import type { JSX } from 'react'
 import type { ChatTurn } from '../../shared/types'
 import { describeSource, explainSource } from '../sourceLabel'
 import { describeTruncatedAnswer } from '../truncationLabel'
+
+// A bare <table> can't scroll on its own, and the bubble it sits in is only 85% of a
+// narrow panel: wrap it so a wide table scrolls instead of pushing the panel sideways.
+function Table({ node: _node, ...props }: JSX.IntrinsicElements['table'] & ExtraProps) {
+  return (
+    <div className="message-bubble-table-wrap">
+      <table {...props} />
+    </div>
+  )
+}
 
 export function MessageBubble({ turn }: { turn: ChatTurn }) {
   return (
@@ -15,7 +27,9 @@ export function MessageBubble({ turn }: { turn: ChatTurn }) {
         </span>
       )}
       <div className="message-bubble-content">
-        <ReactMarkdown>{turn.content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: Table }}>
+          {turn.content}
+        </ReactMarkdown>
       </div>
       {turn.truncated && turn.charsOmitted !== undefined && (
         <p className="message-bubble-truncated">{describeTruncatedAnswer(turn.charsOmitted)}</p>
