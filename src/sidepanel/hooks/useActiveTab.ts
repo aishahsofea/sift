@@ -7,11 +7,21 @@ export type ActiveTabStatus =
   | { state: 'ready'; page: ExtractedPage }
   | { state: 'unreadable'; reason: UnreadableReason; message: string }
 
+// The panel is tab-scoped (#14): background/index.ts opens it with this tab's own id
+// on the path (`?tabId=`), since a side panel document has no API of its own to ask
+// which tab it's attached to — chrome.tabs.getCurrent() does not resolve here.
+function ownTabId(): number | null {
+  const raw = new URLSearchParams(window.location.search).get('tabId')
+  const parsed = raw === null ? NaN : Number(raw)
+  return Number.isInteger(parsed) ? parsed : null
+}
+
 export function useActiveTab(): { tabId: number | null; status: ActiveTabStatus } {
-  const [tabId, setTabId] = useState<number | null>(null)
+  const [tabId] = useState(ownTabId)
   const [status, setStatus] = useState<ActiveTabStatus>({ state: 'loading' })
 
   useEffect(() => {
+    if (tabId === null) return
     let cancelled = false
 
     async function extract(id: number) {
@@ -26,35 +36,23 @@ export function useActiveTab(): { tabId: number | null; status: ActiveTabStatus 
       )
     }
 
-    async function init() {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (cancelled || tab?.id === undefined) return
-      setTabId(tab.id)
-      extract(tab.id)
-    }
-
-    function handleActivated(info: chrome.tabs.OnActivatedInfo) {
-      setTabId(info.tabId)
-      extract(info.tabId)
-    }
-
-    function handleUpdated(updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) {
-      if (changeInfo.status === 'complete' && tab.active) {
-        setTabId(updatedTabId)
+    // This panel belongs to one tab for its whole life, so a navigation on any other
+    // tab is none of its concern — unlike the old window-wide panel, there's no other
+    // tab to switch to.
+    function handleUpdated(updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
         extract(updatedTabId)
       }
     }
 
-    init()
-    chrome.tabs.onActivated.addListener(handleActivated)
+    extract(tabId)
     chrome.tabs.onUpdated.addListener(handleUpdated)
 
     return () => {
       cancelled = true
-      chrome.tabs.onActivated.removeListener(handleActivated)
       chrome.tabs.onUpdated.removeListener(handleUpdated)
     }
-  }, [])
+  }, [tabId])
 
   return { tabId, status }
 }

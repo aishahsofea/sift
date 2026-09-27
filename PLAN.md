@@ -32,7 +32,12 @@ resilience beyond what's listed.
 > **Fallback trigger** and **Streaming** rows below are superseded by
 > [ADR 0001](docs/adr/0001-model-driven-agent-loop.md), and the
 > **Context/truncation** row by
-> [ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md).
+> [ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md). The
+> `manifest.config.ts` `side_panel` line below and "Two permission gotchas
+> that shape the design" (gotcha #2 specifically) are superseded by
+> [ADR 0008](docs/adr/0008-side-panel-is-opened-per-tab-by-hand.md): the panel
+> is no longer global/persistent, so the "persistent panel" framing of gotcha
+> #2 no longer holds, even though broad `host_permissions` stays.
 
 | Area | Decision |
 |---|---|
