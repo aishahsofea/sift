@@ -18,5 +18,6 @@ ADR NNNN` — edit the status of the old record instead of deleting it.
 | [0002](0002-nemotron-nano-as-agent-model.md) | Nemotron 3 Nano stays the model behind the loop | accepted |
 | [0003](0003-forcing-the-final-answer.md) | End the loop by dropping the tools and nudging, not with `tool_choice: "none"` | accepted |
 | [0004](0004-fetch-page-url-allowlist.md) | `fetch_page` only accepts URLs a search returned | accepted |
-| [0005](0005-grounding-is-verified-not-assumed.md) | Grounding is verified, not inferred from the absence of a tool call | proposed |
+| [0005](0005-grounding-is-verified-not-assumed.md) | Grounding is verified, not inferred from the absence of a tool call | accepted |
 | [0006](0006-long-pages-are-kept-and-searched-locally.md) | Long pages are kept whole and searched locally, not truncated | proposed |
+| [0007](0007-grounding-eval-set.md) | The grounding eval set | accepted |

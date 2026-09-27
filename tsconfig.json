@@ -20,5 +20,5 @@
 
     "types": ["chrome", "vite/client"]
   },
-  "include": ["src", "manifest.config.ts", "vite.config.ts", "vite.content.config.ts", "vitest.config.ts"]
+  "include": ["src", "manifest.config.ts", "vite.config.ts", "vite.content.config.ts", "vitest.config.ts", "vitest.eval.config.ts"]
 }

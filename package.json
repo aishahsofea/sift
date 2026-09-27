@@ -8,6 +8,7 @@
   "scripts": {
     "test:nebius": "node --env-file=.env scripts/test-nebius.mjs",
     "test:tools": "node --env-file=.env scripts/test-nebius-tools.mjs",
+    "test:eval": "node --env-file=.env node_modules/.bin/vitest run --config vitest.eval.config.ts",
     "dev": "vite",
     "dev:content": "vite build --watch --config vite.content.config.ts",
     "build": "vite build && vite build --config vite.content.config.ts",

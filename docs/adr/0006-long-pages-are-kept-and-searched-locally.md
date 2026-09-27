@@ -5,10 +5,11 @@
 - Supersedes: the "Context/truncation" row of the locked decision table in
   [PLAN.md](../../PLAN.md) ("No chunking… defensive char-cap truncation only")
 - Related: [ADR 0001](0001-model-driven-agent-loop.md),
-  [ADR 0005](0005-grounding-is-verified-not-assumed.md)
-- Built: #11. Still `proposed` because #3, which has to report the rates under
-  "Still owed to #3", does not exist yet, and the extension has not been click-tested
-  in Chrome.
+  [ADR 0005](0005-grounding-is-verified-not-assumed.md),
+  [ADR 0007](0007-grounding-eval-set.md)
+- Built: #11. Still `proposed`: #3 ([ADR 0007](0007-grounding-eval-set.md)) now exists
+  and answers most of "Still owed to #3" below, but the extension still has not been
+  click-tested in Chrome, which this record's own "Done when" leaves open.
 
 ## Context
 
@@ -185,17 +186,24 @@ handled: an answer that ended with text imitating a `cite_page` call.
   #5 shape could not be reproduced from this copy of the page.
 - The tool is available with no Tavily key: yes, every real-page run above had none.
 
-### Still owed to #3
+### Still owed to #3 — mostly answered by [ADR 0007](0007-grounding-eval-set.md)
 
-- How often an ungrounded answer is labelled `page`, which has to be 0. The rule in
-  decision 6 makes the label depend on a quote from a search result, not on the answer
-  following from it.
-- How often the model quotes a summary and never searches, on more questions and pages
-  than one fixture. On the fixture it did in 1 of 3 runs with a 120,000-character head
-  and in every run of the mixed question. It is the gap left in #5's failure.
-- False abstention on a cut page, and quote pass rates on more real pages.
-- The same on more than one model.
-- A click-through in Chrome: storage quota behaviour, a very long page, the banner.
+- **How often an ungrounded answer is labelled `page`, which has to be 0.** Measured on
+  the real #5 page, 3 live batches of 15: 0 of 32 `page`/`page+web`-labelled answers
+  showed no sign of the real mechanism.
+- **How often the model quotes a summary and never searches, on more questions and
+  pages than one fixture.** Measured on a false-abstention question on this real page
+  (3 batches of 5): 12 of 15 runs correctly answered from the head with no search and
+  were labelled `unverified` anyway — this rule's own cost, not a bug — and 3 of 15
+  searched despite the head already answering. Still one real page and one question,
+  not "more."
+- **False abstention on a cut page.** 15 of 15 runs gave a substantive, verified-quote
+  answer; 0 true abstentions.
+- **Quote pass rates on more real pages, and the same on more than one model.** Not
+  answered — one real page, one model. Tracked as a follow-up issue rather than folded
+  into #3.
+- **A click-through in Chrome: storage quota behaviour, a very long page, the banner.**
+  Still not done. This is what keeps this record `proposed`.
 
 ## Consequences
 
