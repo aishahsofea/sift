@@ -54,13 +54,15 @@ export function useChat(tabId: number | null) {
     setError(null)
   }
 
-  // The in-flight bubble carries no source label: which one is right is only known
-  // once the loop reports the tool calls it actually made.
-  const displayTurns: ChatTurn[] = stream.active
-    ? [...turns, { role: 'assistant', content: stream.text || pendingLabel(stream.step) }]
-    : turns
+  // Nothing has streamed in yet: the panel shows a pending indicator instead of a fake
+  // bubble. Once a chunk arrives it joins turns like any other answer — the in-flight
+  // bubble carries no source label, since which one is right is only known once the
+  // loop reports the tool calls it actually made.
+  const hasStreamedText = stream.active && stream.text.length > 0
+  const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
+  const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null
 
-  return { turns: displayTurns, asking: stream.active, error, ask, clear, historyLoaded }
+  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, clear, historyLoaded }
 }
 
 function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {

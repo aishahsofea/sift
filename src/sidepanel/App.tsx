@@ -11,7 +11,7 @@ import { useChat } from './hooks/useChat'
 
 export default function App() {
   const { tabId, status } = useActiveTab()
-  const { turns, asking, error, ask, clear, historyLoaded } = useChat(tabId)
+  const { turns, asking, pendingStepLabel, error, ask, clear, historyLoaded } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function App() {
           {historyLoaded && turns.length === 0 ? (
             <EmptyChatState title={status.page.title} />
           ) : (
-            <ChatThread turns={turns} />
+            <ChatThread turns={turns} pendingLabel={pendingStepLabel} />
           )}
           {error && (
             <p role="alert" className="chat-error">
