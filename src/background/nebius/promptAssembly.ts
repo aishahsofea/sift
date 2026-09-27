@@ -16,6 +16,12 @@ export interface AgentPromptOptions {
   searchEnabled: boolean
   /** Whether cite_page is offered, so the prompt only asks for it when it can be called. */
   citeEnabled: boolean
+  /**
+   * Whether search_page is offered: the page is cut short in this prompt and the rest
+   * of it was kept (#11). Only ever on with `citeEnabled`, since a passage found there
+   * is of no use to an answer that can't quote it.
+   */
+  pageSearchEnabled: boolean
 }
 
 // The messages every round starts from. The page lives in this system message, so
@@ -46,8 +52,28 @@ export function assembleAgentMessages(
 // and cited search snippets in 11 of 12 search runs, each wasting a round of the cap.
 // Two paths, with the ban stated where the search path ends, plus the notes in the
 // tool results (SEARCH_NOTE, FETCH_NOTE), took that to 0 of 47; neither alone did.
-function answerInstructions(site: string, { searchEnabled, citeEnabled }: AgentPromptOptions): string[] {
+function answerInstructions(site: string, options: AgentPromptOptions): string[] {
+  const { searchEnabled, citeEnabled, pageSearchEnabled } = options
   const intro = `You answer questions about the web page the user is viewing on ${site}.`
+
+  // A cut-short page whose rest can be searched (#11, ADR 0006). The same two paths as
+  // a whole page, with the page's own path gaining a step: find the passages first when
+  // they are in the part the prompt doesn't hold. How much is cut is in the notice below.
+  if (pageSearchEnabled) {
+    const findFirst = 'If the passages you need are in the part that is cut off, call search_page to find them first.'
+    if (searchEnabled) {
+      return [
+        `${intro} There are two ways to answer.`,
+        `1. From the page, when it covers the question: first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them. ${findFirst}`,
+        `2. From the site, when the page doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results. Don't call cite_page on this path: it only checks the page, never search_site or fetch_page results.`,
+      ]
+    }
+    return [
+      intro,
+      `If the page covers the question, first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them. ${findFirst}`,
+      "You can't search the rest of the site, so if the page doesn't cover the question, say so.",
+    ]
+  }
 
   if (searchEnabled && citeEnabled) {
     return [
@@ -81,18 +107,20 @@ function answerInstructions(site: string, { searchEnabled, citeEnabled }: AgentP
 // them as the page and answers from them — on Distill-style pages the byline is not
 // in `content` at all (#6) — so a quote of them has to be able to verify. The URL is
 // metadata, not page text.
-export function pageText(page: ExtractedPage): string {
-  return [page.title, page.byline, page.content].filter(Boolean).join('\n')
+//
+// `content` is the page's whole text when the prompt holds only the head of it (#11):
+// a quote is checked against the whole page, not just the part the model was given.
+export function pageText(page: ExtractedPage, content: string = page.content): string {
+  return [page.title, page.byline, content].filter(Boolean).join('\n')
 }
 
 function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions): string {
   const site = new URL(page.url).hostname
-  const { searchEnabled } = options
 
   return [
     ...answerInstructions(site, options),
     'Never answer from outside knowledge. If neither the page nor the search results cover the question, say so.',
-    ...truncationNotice(page, searchEnabled),
+    ...truncationNotice(page, options),
     '',
     `Page title: ${page.title}`,
     `Page URL: ${page.url}`,
@@ -114,12 +142,20 @@ function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions
 // says outright that a summary is not the section: given an answer-shaped summary,
 // Nano sometimes counts the question as covered and answers without searching.
 // Constant for a given page, so it doesn't disturb the cacheable prefix.
-function truncationNotice(page: ExtractedPage, searchEnabled: boolean): string[] {
+//
+// When the rest of the page was kept (#11) the way out is search_page, which reaches the
+// missing section itself; search_site would only find other pages of the site. Otherwise
+// it is what it was: search the site, or say the page was cut off.
+function truncationNotice(page: ExtractedPage, { searchEnabled, pageSearchEnabled }: AgentPromptOptions): string[] {
   if (!page.truncated) return []
 
   const omitted = page.charsOmitted.toLocaleString('en-US')
+  const cut = `The page content below is cut off: its last ${omitted} characters are not included, so every section after the cut is missing. A section the content only names or summarizes is one of them, and a summary is not the section.`
+  if (pageSearchEnabled) {
+    return [
+      `${cut} To answer a question about a missing section, call search_page with words from it: it searches the whole page, including the part that is cut off. Do not answer from the summary.`,
+    ]
+  }
   const action = searchEnabled ? 'call search_site for it' : 'say the page was cut off'
-  return [
-    `The page content below is cut off: its last ${omitted} characters are not included, so every section after the cut is missing. A section the content only names or summarizes is one of them, and a summary is not the section. Do not answer a question about a missing section from the page: ${action}.`,
-  ]
+  return [`${cut} Do not answer a question about a missing section from the page: ${action}.`]
 }

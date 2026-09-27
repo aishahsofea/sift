@@ -5,19 +5,24 @@ import { assembleAgentMessages } from './promptAssembly'
 import {
   CITE_DONE_NOTE,
   CITE_NUDGE,
+  CITE_NUDGE_CUT,
   CITE_PARTIAL_NOTE,
   CITE_RECOVERY_HINT,
   CITE_TOOL,
+  CITE_TOOL_CUT,
   FETCH_NOTE,
   FORCE_NUDGE,
   FORCE_NUDGE_CITE,
   FORCE_RETRY,
+  PAGE_SEARCH_EMPTY_NOTE,
+  PAGE_SEARCH_NOTE,
   SEARCH_NOTE,
+  SEARCH_PAGE_TOOL,
 } from './tools'
 
 // scripts/test-nebius-tools.mjs is standalone, so it keeps its own copy of the
 // prompt and tool wording, and it is the only thing that checks that wording against
-// the real model (ADR 0001, ADR 0003, ADR 0005). A prompt edit that never reaches it
+// the real model (ADR 0001, ADR 0003, ADR 0005, ADR 0006). A prompt edit that never reaches it
 // is verified prompt surface that is no longer verified. This fails when the two drift.
 const script = readFileSync(new URL('../../../scripts/test-nebius-tools.mjs', import.meta.url), 'utf8')
 
@@ -29,31 +34,71 @@ const page: ExtractedPage = {
   truncated: false,
   charsOmitted: 0,
 }
+const truncatedPage: ExtractedPage = { ...page, truncated: true, charsOmitted: 126_323 }
+
+type SpikePage = Pick<ExtractedPage, 'url' | 'title' | 'content'> & { truncated?: boolean; charsOmitted?: number }
 
 // The script's own function, lifted out of its source so what runs here is what
 // the live spike sends.
-function spikeSystemPrompt(): (page: { title: string; url: string; content: string }, options: { search: boolean; cite: boolean }) => string {
-  const source = script.match(/function systemPrompt\(page, \{ search, cite \}\) \{[\s\S]*?\n\}\n/)?.[0]
+function spikeSystemPrompt(): (page: SpikePage, options: { search: boolean; cite: boolean; pageSearch?: boolean }) => string {
+  const source = script.match(/function systemPrompt\([^)]*\) \{[\s\S]*?\n\}\n/)?.[0]
   if (!source) throw new Error('systemPrompt() not found in scripts/test-nebius-tools.mjs')
   return (0, eval)(`(${source})`)
 }
 
+// The script's tool definitions, evaluated the same way, in one scope since the cut
+// variant of cite_page is built by spreading the whole-page one.
+function spikeTools(): { SEARCH_PAGE_TOOL: unknown; CITE_TOOL: unknown; CITE_TOOL_CUT: unknown } {
+  const declaration = (name: string) => {
+    const source = script.match(new RegExp(`const ${name} = [\\s\\S]*?\\n\\};\\n`))?.[0]
+    if (!source) throw new Error(`${name} not found in scripts/test-nebius-tools.mjs`)
+    return source
+  }
+  const names = ['CITE_TOOL', 'SEARCH_PAGE_TOOL', 'CITE_TOOL_CUT']
+  return (0, eval)(`(() => { ${names.map(declaration).join('\n')}; return { ${names.join(', ')} } })()`)
+}
+
 describe('scripts/test-nebius-tools.mjs parity', () => {
-  const combinations = [
+  const wholePage = [
     { search: true, cite: true },
     { search: true, cite: false },
     { search: false, cite: true },
     { search: false, cite: false },
   ]
 
-  it.each(combinations)('sends the system prompt production sends (search: $search, cite: $cite)', ({ search, cite }) => {
-    const [system] = assembleAgentMessages(page, [], 'q', { searchEnabled: search, citeEnabled: cite })
+  it.each(wholePage)('sends the system prompt production sends (search: $search, cite: $cite)', ({ search, cite }) => {
+    const [system] = assembleAgentMessages(page, [], 'q', { searchEnabled: search, citeEnabled: cite, pageSearchEnabled: false })
     expect(spikeSystemPrompt()(page, { search, cite })).toBe(system.content)
   })
+
+  // A page cut short whose rest was not kept: what every long page got before #11.
+  it.each([{ search: true }, { search: false }])(
+    'sends the cut-page prompt production sends when the rest was not kept (search: $search)',
+    ({ search }) => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', { searchEnabled: search, citeEnabled: false, pageSearchEnabled: false })
+      expect(spikeSystemPrompt()(truncatedPage, { search, cite: false })).toBe(system.content)
+    },
+  )
+
+  // A page cut short whose rest was kept, so search_page is offered (ADR 0006).
+  it.each([{ search: true }, { search: false }])(
+    'sends the cut-page prompt production sends when its rest can be searched (search: $search)',
+    ({ search }) => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', { searchEnabled: search, citeEnabled: true, pageSearchEnabled: true })
+      expect(spikeSystemPrompt()(truncatedPage, { search, cite: true, pageSearch: true })).toBe(system.content)
+    },
+  )
 
   it('checks the cite_page tool wording it ships', () => {
     expect(script).toContain(CITE_TOOL.function.description)
     expect(script).toContain(CITE_TOOL.function.parameters.properties.quotes.description)
+  })
+
+  it('offers the tools production offers, whole: cite_page, search_page, and cite_page as offered beside it', () => {
+    const tools = spikeTools()
+    expect(tools.CITE_TOOL).toEqual(CITE_TOOL)
+    expect(tools.SEARCH_PAGE_TOOL).toEqual(SEARCH_PAGE_TOOL)
+    expect(tools.CITE_TOOL_CUT).toEqual(CITE_TOOL_CUT)
   })
 
   it('checks the notes it puts in search, fetch and cite_page results', () => {
@@ -62,8 +107,15 @@ describe('scripts/test-nebius-tools.mjs parity', () => {
     }
   })
 
-  it('checks the nudge that asks for quotes after an uncited answer', () => {
+  it('checks the note it puts in a search_page result, found or not', () => {
+    for (const text of [PAGE_SEARCH_NOTE, PAGE_SEARCH_EMPTY_NOTE]) {
+      expect(script).toContain(text)
+    }
+  })
+
+  it('checks the nudge that asks for quotes after an uncited answer, on a whole page and on a cut one', () => {
     expect(script).toContain(CITE_NUDGE)
+    expect(script).toContain(CITE_NUDGE_CUT)
   })
 
   it('checks the nudges that end the loop, with and without cite_page on offer', () => {

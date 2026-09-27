@@ -70,13 +70,22 @@ every claim in the answer is on it. An answer with no verified quote is
 the service worker console saying why it got its label. See
 [ADR 0005](docs/adr/0005-grounding-is-verified-not-assumed.md).
 
-Pages longer than 120,000 characters are cut short. The panel says so before you
-ask anything, and again on each answer given against a cut page. The model is
-told how many characters it can't see and to search for anything past the cut,
-and an answer on a cut page with no search behind it is labeled **not checked**,
-since the model only held a fragment of the page. The quote step is skipped on a
-cut page: a quote from the part the model saw can't show the answer wasn't about
-the part it didn't.
+Only the first 120,000 characters of a page go into the prompt. For a longer page
+(up to 1,000,000 characters) Sift keeps the whole text in the browser's session
+storage and gives the model a `search_page` tool. It looks through the whole page
+for the words the model asks for and returns the best-matching passages with where
+they start, and it reserves room in every result for the part the prompt doesn't
+hold. It runs inside the extension, so it needs no request, no embeddings and no
+Tavily key. The panel says a page is long before you ask anything, and the model is
+told how many characters it can't see and to search for a section the prompt only
+names or summarizes. A quote is checked against the whole page. An answer on a long
+page is labeled **from the page** only when a quote came from a passage
+`search_page` returned; if the model never searched, or quoted something else, the
+label is a grey **not checked**, since a quote from the part it was given can't show
+the answer wasn't about the part it wasn't. Past 1,000,000 characters, or if the
+browser has no room to keep the text, the page is handled as it used to be: the
+model only sees the start, there is no quote step, and the panel says the rest
+wasn't read. See [ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md).
 
 Answers stream as they're written. Pages that can't be read (e.g. `chrome://`
 pages, the built-in PDF viewer) show a disabled "Can't read this page" state
@@ -106,7 +115,8 @@ npm run typecheck   # tsc --noEmit
 npm run test        # vitest run — unit tests for pure logic only
 npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke test, reads .env
 npm run test:tools  # scripts/test-nebius-tools.mjs — live tool-calling spike for the agent loop, reads .env
-                    # (--no-cite runs it without cite_page, the baseline for that round's cost)
+                    # (--no-cite runs it without cite_page, the baseline for that round's cost;
+                    # --only=cut runs the long-page cases for search_page)
 ```
 
 ## Project layout and design decisions

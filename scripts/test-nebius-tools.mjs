@@ -14,6 +14,13 @@
 //   - its quotes are copied verbatim (the verification pass rate)
 //   - a rejected quote comes back as a tool-role error the model recovers from
 //   - what the extra round costs, against the same cases with --no-cite
+// And the fourth, search_page (ADR 0006, #11), for a page too long for the prompt: the
+// prompt holds its start, search_page looks through the rest, and cite_page checks a
+// quote against all of it:
+//   - the model searches the cut-off part for a section it can only see named and summarized
+//   - it then quotes what it found, and the quote verifies against the whole page
+//   - it does not search when the question is about the part it was given
+//   - the prefix caching ADR 0001 measured still holds on a cut page across rounds
 // Both search tools are stubbed against a fictional site (loomkit.example), so
 // every expected answer is only knowable from the page or a stubbed tool result,
 // never from the model's own knowledge. No Tavily calls are made.
@@ -108,12 +115,62 @@ const CITE_TOOL = {
   },
 };
 
-const ALL_TOOLS = [...SEARCH_TOOLS, CITE_TOOL];
+// The tool for a page too long for the prompt: a keyword search of the whole page, with
+// slots of its own for the part that was cut off, run in the extension. Mirror
+// SEARCH_PAGE_TOOL in src/background/nebius/tools.ts.
+const SEARCH_PAGE_TOOL = {
+  type: "function",
+  function: {
+    name: "search_page",
+    description:
+      "Search the whole page, including the part that is cut off from the page content. Returns the passages that best match your words, each with the character offset it starts at. Use it when the question is about a part of the page that isn't in the page content.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The words to look for, as they'd be written on the page: names and key terms, not a whole question.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+};
+
+// cite_page as offered next to search_page: a passage search_page returned can be
+// cited, and a quote is checked against the whole page. Mirror CITE_TOOL_CUT.
+const CITE_TOOL_CUT = {
+  ...CITE_TOOL,
+  function: {
+    ...CITE_TOOL.function,
+    description:
+      "Quote the passages of the page that support your answer. Call it before you answer from the page, whether the passages are in the page content or came from search_page; search_site and fetch_page results can't be cited. Each quote is checked against the whole page, so copy it word for word: a quote that isn't found is rejected.",
+    parameters: {
+      ...CITE_TOOL.function.parameters,
+      properties: {
+        quotes: {
+          ...CITE_TOOL.function.parameters.properties.quotes,
+          description: "Up to three short passages, each a sentence or less, copied exactly from the page: no paraphrasing, no ellipses.",
+        },
+      },
+    },
+  },
+};
+
+const ALL_TOOLS = [...SEARCH_TOOLS, SEARCH_PAGE_TOOL, CITE_TOOL];
+
+// A case whose page reaches the model cut short, with the rest kept (ADR 0006).
+const isCut = (testCase) => Boolean(testCase.page?.truncated);
 
 // Which tools a case is offered: search unless the case turns it off (the
-// no-Tavily-key path), and cite_page unless the run is the --no-cite baseline.
+// no-Tavily-key path), search_page on a cut page, and cite_page unless the run is
+// the --no-cite baseline.
 function toolsFor(testCase) {
-  return [...(testCase.noSearch ? [] : SEARCH_TOOLS), ...(citeEnabled ? [CITE_TOOL] : [])];
+  return [
+    ...(testCase.noSearch ? [] : SEARCH_TOOLS),
+    ...(isCut(testCase) ? [SEARCH_PAGE_TOOL] : []),
+    ...(citeEnabled ? [isCut(testCase) ? CITE_TOOL_CUT : CITE_TOOL] : []),
+  ];
 }
 
 // Required arguments per tool, and whether each is a string or a list of strings.
@@ -160,7 +217,7 @@ const DEFAULT_FORCE_STRATEGY = "omit-tools+nudge";
 // content it would render raw markup as the answer; in the reasoning of a
 // round with no tool_calls it points at a missed server-side parse.
 const TOOL_MARKUP = /<\/?tool_?call>|<TOOLCALL>|<function[=\s>]/i;
-const TOOL_JSON = /"name"\s*:\s*"(search_site|fetch_page|cite_page)"/;
+const TOOL_JSON = /"name"\s*:\s*"(search_site|fetch_page|cite_page|search_page)"/;
 
 // ---------------------------------------------------------------------------
 // Fixture: a fictional site, so answers can't come from the model's own knowledge
@@ -197,6 +254,60 @@ const TYPO_PAGE = {
     "The Loomkit team called 2.0 \u201cthe biggest update since launch\u201d \u2014 a rewrite of the board engine that\u2019s been two years in the making\u2026 Existing customers get it at no extra cost, and the new guest\u2011seat pricing is unchanged.",
   ].join("\n"),
 };
+
+// A page longer than the prompt holds (ADR 0006): a postmortem whose contents and summary
+// name and summarize section 5, and whose section 5 (where any real answer is) is past the
+// cut. `content` is the head, all the prompt holds; `full` is the page as kept, which a quote
+// is checked against and search_page looks through. The summary is in the head on purpose: it
+// is the state #5 left the model in, enough to know the section exists and not enough to answer.
+const CUT_HEAD = [
+  "The Loomkit Sync Incident: a postmortem",
+  "By Dana Reyes, co-founder. Published April 9, 2026.",
+  "",
+  "Contents",
+  "1. Summary",
+  "2. Timeline",
+  "3. Impact",
+  "4. Detection",
+  "5. Anatomy of the Sync Incident",
+  "6. What we changed",
+  "",
+  "1. Summary",
+  "On March 18 two clients could write to the same Loomkit board at once, and edits from one of them were lost. Section 5 traces how a stale lock let that happen, and section 6 lists what we changed.",
+  "",
+  "2. Timeline",
+  "The first lost edit was reported at 09:14 UTC. We paused board writes at 09:52 UTC and resumed at 11:30 UTC.",
+  "",
+  "3. Impact",
+  "Eleven boards had lost edits. No board was deleted.",
+  "",
+  "4. Detection",
+  "A customer reported the first lost edit. Our own alerts did not fire.",
+  "",
+].join("\n");
+
+const CUT_TAIL = [
+  "5. Anatomy of the Sync Incident",
+  "Every board write takes a lock that lasts 45 seconds. The clock on our eu-west-3 region had drifted 52 seconds behind the others, so a lock granted there had already expired by the time the other regions read it. A second client was granted the same lock while the first was still writing.",
+  "",
+  "Both clients then wrote to the board, and the later write replaced the earlier one without merging. The database accepted both writes because nothing compared the lock's age with the write.",
+  "",
+  "6. What we changed",
+  "We replaced the time-based lock with fencing tokens: every lock grant now carries a number that rises with each grant, and the database rejects any write carrying a lower number than one it has already seen. We also added an alert for clock drift over 5 seconds.",
+  "",
+  "Thanks to everyone who reported lost edits.",
+].join("\n");
+
+const CUT_PAGE = {
+  title: "The Loomkit Sync Incident: a postmortem",
+  url: "https://loomkit.example/blog/sync-incident-postmortem",
+  content: CUT_HEAD,
+  full: CUT_HEAD + CUT_TAIL,
+  truncated: true,
+  charsOmitted: CUT_TAIL.length,
+};
+// What only section 5 says: the drift, and the lock that had already expired.
+const CUT_CAUSE = /52|drift|expired|eu-west-3/i;
 
 const PRICING_URL = "https://loomkit.example/pricing";
 const PRICING_TEXT =
@@ -251,8 +362,10 @@ const FULL_PAGES = {
 const MIN_QUOTE_CHARS = 10;
 const collapse = (text) => text.replace(/\s+/g, " ").trim();
 
-// The page as the model saw it: the title and content the system prompt shows.
-const pageText = (page) => [page.title, page.content].join("\n");
+// The page as the model saw it: the title and content the system prompt shows. On a cut
+// page, all of it, not only the start the prompt holds: a quote can come from what
+// search_page found (ADR 0006).
+const pageText = (page) => [page.title, page.full ?? page.content].join("\n");
 
 const RECOVERY_HINT =
   "Copy each passage exactly as it appears in the page content. If the page doesn't say it, don't cite it. Search results can't be cited.";
@@ -265,6 +378,14 @@ const CITE_PARTIAL_NOTE = "Only the verified passages are on the page. Answer no
 // cite_page: the answer is discarded and this asks again.
 const CITE_NUDGE =
   "Before you answer, call cite_page with up to three short passages from the page content that support your answer, copied word for word. If the page content doesn't cover the question, say so instead.";
+// The same ask on a cut page whose rest search_page can reach, and what search_page's result
+// says. Mirror CITE_NUDGE_CUT / PAGE_SEARCH_NOTE / PAGE_SEARCH_EMPTY_NOTE in tools.ts.
+const CITE_NUDGE_CUT =
+  "Before you answer, call cite_page with up to three short passages from the page that support your answer, copied word for word. If the passages are in the part that is cut off, call search_page for them first. If the page doesn't cover the question, say so instead.";
+const PAGE_SEARCH_NOTE =
+  "These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.";
+const PAGE_SEARCH_EMPTY_NOTE =
+  "Nothing on the page matches those words. Search again with different words, or answer from what you have.";
 
 // Checks every quote against the page. `injectRejection` fails the whole call
 // regardless, to see how the model reacts to an error it can't have caused.
@@ -283,6 +404,66 @@ function citePage(page, quotes, { injectRejection = false } = {}) {
     }
   }
   return { verified, errors };
+}
+
+// search_page: reimplemented crudely for the spike (the real one is BM25 over windows,
+// src/background/handlers/searchPage.ts). What this measures is what the model does with
+// a result, not the ranking: the paragraphs of the whole page that share words with the
+// query, best first, each with where it starts, with two slots held for the part that was
+// cut off before rank fills the rest, as the real one does.
+function searchPageStub(page, query) {
+  const stem = (word) => word.toLowerCase().replace(/s$/, "");
+  const words = (text) => (text.match(/[\p{L}\p{N}]+/gu) ?? []).map(stem);
+  const terms = new Set(words(query).filter((word) => word.length >= 3));
+  const scored = [];
+  // The head and the cut-off part are split apart, so a paragraph never runs across the cut.
+  for (const [chunk, base, cut] of [
+    [page.content, 0, false],
+    [page.full.slice(page.content.length), page.content.length, true],
+  ]) {
+    let offset = base;
+    for (const text of chunk.split("\n\n")) {
+      const score = words(text).filter((word) => terms.has(word)).length;
+      if (score > 0 && text.trim()) scored.push({ offset, text: text.trim(), score, cut });
+      offset += text.length + 2;
+    }
+  }
+  scored.sort((a, b) => b.score - a.score);
+  const chosen = scored.filter((p) => p.cut).slice(0, 2);
+  for (const p of scored) if (chosen.length < 4 && !chosen.includes(p)) chosen.push(p);
+  return chosen.sort((a, b) => b.score - a.score).map(({ offset, text }) => ({ offset, text }));
+}
+
+// The checks every cut-page case shares (ADR 0006): did it search the part it can't see,
+// did it quote, and did a quote come from that part. `expectSearch: false` is the case
+// where the head answers and searching would be a wasted round.
+function checkCutPage(run, c, page, { expectSearch = true } = {}) {
+  const { citations, pageSearches, pagePassages, pageQueries } = run.state;
+  const verified = citations.flatMap((x) => x.verified);
+  const rejected = citations.flatMap((x) => x.errors);
+  if (expectSearch) {
+    c.should(pageSearches > 0, "called search_page for the part that is cut off", "never searched it: answered from the head, or searched the site");
+    c.should(pagePassages > 0, "search_page found the section", `queries ${JSON.stringify(pageQueries)} found nothing`);
+  } else {
+    c.should(pageSearches === 0, "did not search the cut-off part, since the head answers", `searched ${JSON.stringify(pageQueries)}`);
+  }
+  c.should(verified.length > 0, "at least one quote verified against the whole page", `${rejected.length} rejected: ${rejected.join(" | ")}`);
+  if (expectSearch) {
+    const head = collapse(page.content);
+    c.should(
+      verified.some((quote) => !head.includes(quote)),
+      "a verified quote comes from the part the prompt did not hold",
+      `verified: ${JSON.stringify(verified)}`,
+    );
+  }
+  // Mirrors deriveSource: on a cut page a quote counts only if it is inside a passage search_page returned.
+  const fromSearch = verified.filter((quote) => run.state.passageTexts.some((text) => text.includes(quote)));
+  if (expectSearch) c.should(fromSearch.length > 0, "a verified quote is one taken from a passage search_page returned", `verified: ${JSON.stringify(verified)}`);
+  const label = fromSearch.length ? "page" : "unverified";
+  c.info(
+    "label this would get",
+    `${label} (${verified.length} quote(s) verified, ${pagePassages} passage(s) found, searches ${JSON.stringify(pageQueries)}${rejected.length ? `, rejected ${rejected.join(" | ")}` : ""})`,
+  );
 }
 
 // The checks every case that offers cite_page shares. A no-op under --no-cite.
@@ -325,6 +506,9 @@ const onPageCase = (id, title, question, expected) => ({
     checkCitation(run, c);
   },
 });
+
+// The cut page at the size Sift sends, built once: padding 120K characters is not free.
+const BIG_CUT_PAGE = padCut(CUT_PAGE, 120_000);
 
 const CASES = [
   {
@@ -491,6 +675,112 @@ const CASES = [
       c.info("invented quotes", `${rejected.length} rejected${rejected.length ? `: ${rejected.join(" | ")}` : ""}`);
     },
   },
+  // A page longer than the prompt holds (ADR 0006, #11): the model has the head and
+  // search_page. These are the #5 question in miniature: the head names and summarizes
+  // the section, and only search_page reaches the body.
+  {
+    id: "cut:section",
+    title: "Cut page, question about the section the head only names and summarizes: search_page, quote it, answer from it",
+    page: CUT_PAGE,
+    citeOnly: true,
+    question: "How did the sync incident happen? I want the details.",
+    search: () => RESULTS.unrelated,
+    check(run, c) {
+      c.must(CUT_CAUSE.test(run.answer), "answer has what only the cut-off section says (the drifted clock, the expired lock)", preview(run.answer));
+      const used = run.state.queries.length + run.state.fetchedUrls.length;
+      c.should(used === 0, "answered without searching the site", `searched the site: ${JSON.stringify(run.state.queries.map((q) => q.query))}`);
+      checkCutPage(run, c, CUT_PAGE);
+    },
+  },
+  {
+    id: "cut:no-search",
+    title: "Same question with no Tavily key: search_page and cite_page are all it has",
+    page: CUT_PAGE,
+    noSearch: true,
+    citeOnly: true,
+    question: "How did the sync incident happen? I want the details.",
+    check(run, c) {
+      c.must(CUT_CAUSE.test(run.answer), "answer has what only the cut-off section says (the drifted clock, the expired lock)", preview(run.answer));
+      checkCutPage(run, c, CUT_PAGE);
+    },
+  },
+  {
+    id: "cut:head",
+    title: "Cut page, question the head answers: no reason to search the part that was cut off",
+    page: CUT_PAGE,
+    citeOnly: true,
+    question: "Who wrote this postmortem?",
+    search: () => RESULTS.unrelated,
+    check(run, c) {
+      c.must(/dana\sreyes/i.test(run.answer), "answer comes from the head (Dana Reyes)", preview(run.answer));
+      checkCutPage(run, c, CUT_PAGE, { expectSearch: false });
+    },
+  },
+  {
+    id: "cut:absent",
+    title: "Cut page, question neither part covers, no site search: does it invent a figure?",
+    page: CUT_PAGE,
+    noSearch: true,
+    citeOnly: true,
+    question: "How much did the incident cost in refunds?",
+    check(run, c) {
+      c.should(!MADE_UP_PRICE.test(run.answer), "doesn't make up a refund figure", preview(run.answer));
+      const { pageSearches, pagePassages, pageQueries } = run.state;
+      c.info("page searches", `${pageSearches} call(s), ${pagePassages} passage(s), ${JSON.stringify(pageQueries)}`);
+    },
+  },
+  {
+    id: "cut:mixed",
+    title: "Cut page, question needing the cut-off part and a search of the site: do the paths still combine?",
+    page: CUT_PAGE,
+    citeOnly: true,
+    question: "What caused the sync incident, and how much does the Loomkit Pro plan cost?",
+    search: () => RESULTS.pricing,
+    check(run, c) {
+      c.should(run.state.queries.length > 0, "searched the site for the price", `answered directly: ${preview(run.answer)}`);
+      c.must(CUT_CAUSE.test(run.answer), "answer has the cut-off section's part (the drifted clock)", preview(run.answer));
+      c.must(PRICE.test(run.answer), "answer has the site's part ($17.50)", preview(run.answer));
+      checkCutPage(run, c, CUT_PAGE);
+    },
+  },
+  {
+    // The first answer skips every tool, as the model does about 1 run in 10 on a whole
+    // page; with only the head to go on it would be the #5 answer. It is thrown away and
+    // the model asked to quote, and this checks the way out it is given (search the rest)
+    // is one it takes. The first round has no page tools, so it can only answer.
+    id: "cut:nudge",
+    title: "Cut page, model answers without looking: the answer is thrown away and it searches and quotes first",
+    page: CUT_PAGE,
+    noSearch: true,
+    citeOnly: true,
+    skipFirstRound: true,
+    question: "How did the sync incident happen? I want the details.",
+    check(run, c) {
+      c.must(run.state.askedToQuote, "the uncited answer was thrown away and the model asked to quote", "nothing was thrown away");
+      c.must(CUT_CAUSE.test(run.answer), "final answer has what only the cut-off section says", preview(run.answer));
+      checkCutPage(run, c, CUT_PAGE);
+    },
+  },
+  {
+    // ADR 0001 measured 21,120 of 23,454 prompt tokens cached on a ~100K-char page. A cut
+    // page sends the same head every round with one more tool, so re-measure it.
+    id: "cut:big-page",
+    title: "Cut page at a realistic size (~120K-char head): latency, tokens, and whether the prefix is still cached across rounds",
+    page: BIG_CUT_PAGE,
+    citeOnly: true,
+    question: "How did the sync incident happen? I want the details.",
+    search: () => RESULTS.unrelated,
+    check(run, c) {
+      c.must(CUT_CAUSE.test(run.answer), "answer has what only the cut-off section says (the drifted clock, the expired lock)", preview(run.answer));
+      checkCutPage(run, c, BIG_CUT_PAGE);
+      c.info("cached / prompt tokens per round", run.rounds.map((r) => `${r.usage?.prompt_tokens_details?.cached_tokens ?? "n/a"}/${r.usage?.prompt_tokens ?? "n/a"}`).join(", "));
+      const later = run.rounds.slice(1).filter((r) => r.usage?.prompt_tokens);
+      if (later.length) {
+        const share = later.reduce((sum, r) => sum + (r.usage.prompt_tokens_details?.cached_tokens ?? 0) / r.usage.prompt_tokens, 0) / later.length;
+        c.should(share > 0.5, "later rounds are served mostly from the prompt cache", `${(share * 100).toFixed(0)}% cached`);
+      }
+    },
+  },
   {
     // ADR 0001's headline: page and web in one answer. With cite_page the model has
     // two paths to choose between, so check it still combines them.
@@ -651,7 +941,7 @@ const CASES = [
 
 async function runLoop(model, testCase) {
   const messages = [
-    { role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: citeEnabled }) },
+    { role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: citeEnabled, pageSearch: isCut(testCase) && citeEnabled }) },
     ...(testCase.history ?? []),
     { role: "user", content: testCase.question },
   ];
@@ -662,6 +952,10 @@ async function runLoop(model, testCase) {
     fetchedUrls: [],
     inventedUrls: [],
     citations: [],
+    pageSearches: 0,
+    pagePassages: 0,
+    passageTexts: [],
+    pageQueries: [],
     askedToQuote: false,
     discardedAnswer: null,
     forcedRetried: false,
@@ -691,7 +985,7 @@ async function runLoop(model, testCase) {
     // test what the nudge does about it. (Dropping the tools instead would make it write
     // the cite_page call out as raw markup, which is a different failure.)
     else if (testCase.skipFirstRound && round === 1) {
-      const baseline = [{ role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: false }) }, ...messages.slice(1)];
+      const baseline = [{ role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: false, pageSearch: false }) }, ...messages.slice(1)];
       call = { messages: baseline, params: testCase.noSearch ? {} : { tools: SEARCH_TOOLS } };
     }
     else call = { messages: quoteNudge ? [...messages, quoteNudge] : messages, params: tools.length ? { tools } : {} };
@@ -705,11 +999,16 @@ async function runLoop(model, testCase) {
     rounds.push({ round, forced, forceMode: forced ? forceStrategy : null, ...result });
 
     if (!result.toolCalls.length) {
+      // Mirrors mustQuoteFirst: nothing but page searches so far (what search_page returns is
+      // the page, so an answer after it still needs a quote), and not after a page search
+      // that found nothing, since then there is no passage to quote that could change the label.
       // `rounds` already holds this one, and it has no tool calls, so it can't be the reason to stop.
-      if (citeEnabled && !state.askedToQuote && rounds.every((r) => !r.toolCalls.length)) {
+      const searchedPageOnly = rounds.every((r) => r.toolCalls.every((tc) => tc.name === "search_page"));
+      const foundNothing = state.pageSearches > 0 && state.pagePassages === 0;
+      if (citeEnabled && !state.askedToQuote && searchedPageOnly && !foundNothing) {
         state.askedToQuote = true;
         state.discardedAnswer = result.content;
-        quoteNudge = { role: "user", content: CITE_NUDGE };
+        quoteNudge = { role: "user", content: isCut(testCase) ? CITE_NUDGE_CUT : CITE_NUDGE };
         continue;
       }
       return done({ answer: result.content });
@@ -747,6 +1046,16 @@ async function runLoop(model, testCase) {
 }
 
 function runTool(testCase, state, tc, round) {
+  if (tc.name === "search_page") {
+    // Mirrors searchCutPage: refused where it wasn't offered, otherwise a local search of the cut-off part.
+    if (!isCut(testCase)) return { error: "search_page is not available." };
+    const passages = searchPageStub(testCase.page, tc.args.query);
+    state.pageSearches++;
+    state.pagePassages += passages.length;
+    state.passageTexts.push(...passages.map((p) => collapse(p.text)));
+    state.pageQueries.push(tc.args.query);
+    return { passages, note: passages.length ? PAGE_SEARCH_NOTE : PAGE_SEARCH_EMPTY_NOTE };
+  }
   if (tc.name === "cite_page") {
     const injectRejection = Boolean(testCase.rejectFirstCite) && state.citations.length === 0;
     const { verified, errors } = citePage(testCase.page ?? PAGE, tc.args.quotes, { injectRejection });
@@ -773,9 +1082,10 @@ function runTool(testCase, state, tc, round) {
   return withWebNote({ url: tc.args.url, content: FULL_PAGES[tc.args.url] ?? "" }, "fetch");
 }
 
-// Mirrors src/background/nebius/promptAssembly.ts for a whole (untruncated)
-// page: `search` is whether Tavily is configured, `cite` whether cite_page is offered.
-// With both, the answer instructions are two explicit paths: cite_page only on the
+// Mirrors src/background/nebius/promptAssembly.ts: `search` is whether Tavily is configured,
+// `cite` whether cite_page is offered, `pageSearch` whether the page reached the model cut
+// short with its rest kept, so search_page is offered (ADR 0006).
+// With search and cite, the answer instructions are two explicit paths: cite_page only on the
 // page path. A single "cite before you answer from the page" line was read as a
 // step in every answer, so the model cited search snippets.
 // Search and fetch results say they aren't the page, in the message the model
@@ -792,34 +1102,60 @@ function withWebNote(output, kind) {
   return { ...output, note };
 }
 
-function systemPrompt(page, { search, cite }) {
+function systemPrompt(page, { search, cite, pageSearch = false }) {
   const site = new URL(page.url).hostname;
-  const toolInstructions = search
-    ? [
-        `If it doesn't (or only covers part of it), call search_site to search ${site}. If the results don't help, search again with a better query.`,
-        "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full.",
-      ]
-    : ["You have no search available, so if the page doesn't cover the question, say so."];
-  if (cite && search) {
-    return [
-      `You answer questions about the web page the user is viewing on ${site}. There are two ways to answer.`,
-      "1. From the page content below, when it covers the question: first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them.",
-      `2. From the site, when the page content doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results. Don't call cite_page on this path: it only checks the page content below, never search or fetch results.`,
-      "Never answer from outside knowledge. If neither the page nor the search results cover the question, say so.",
-      "",
-      `Page title: ${page.title}`,
-      `Page URL: ${page.url}`,
-      "Page content:",
-      page.content,
-    ].join("\n");
+  const intro = `You answer questions about the web page the user is viewing on ${site}.`;
+  const quoteThenAnswer =
+    "first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them.";
+  const searchTheSite = `call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results.`;
+  let instructions;
+  if (pageSearch) {
+    // A page cut short in the prompt whose rest search_page can reach (ADR 0006).
+    const findFirst = "If the passages you need are in the part that is cut off, call search_page to find them first.";
+    instructions = search
+      ? [
+          `${intro} There are two ways to answer.`,
+          `1. From the page, when it covers the question: ${quoteThenAnswer} ${findFirst}`,
+          `2. From the site, when the page doesn't cover the question (or only part of it): ${searchTheSite} Don't call cite_page on this path: it only checks the page, never search_site or fetch_page results.`,
+        ]
+      : [
+          intro,
+          `If the page covers the question, ${quoteThenAnswer} ${findFirst}`,
+          "You can't search the rest of the site, so if the page doesn't cover the question, say so.",
+        ];
+  } else if (cite && search) {
+    instructions = [
+      `${intro} There are two ways to answer.`,
+      `1. From the page content below, when it covers the question: ${quoteThenAnswer}`,
+      `2. From the site, when the page content doesn't cover the question (or only part of it): ${searchTheSite} Don't call cite_page on this path: it only checks the page content below, never search or fetch results.`,
+    ];
+  } else {
+    instructions = [
+      intro,
+      cite
+        ? `If the page content below covers the question, ${quoteThenAnswer}`
+        : "Answer from the page content below whenever it covers the question.",
+      ...(search
+        ? [
+            `If it doesn't (or only covers part of it), call search_site to search ${site}. If the results don't help, search again with a better query.`,
+            "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full.",
+          ]
+        : ["You have no search available, so if the page doesn't cover the question, say so."]),
+    ];
   }
+  // Said only of a page the prompt holds the start of. With search_page the way out is that
+  // tool, which reaches the missing section itself; otherwise it is search_site, or saying so.
+  const cutNotice = () => {
+    const omitted = page.charsOmitted.toLocaleString("en-US");
+    const cut = `The page content below is cut off: its last ${omitted} characters are not included, so every section after the cut is missing. A section the content only names or summarizes is one of them, and a summary is not the section.`;
+    return pageSearch
+      ? `${cut} To answer a question about a missing section, call search_page with words from it: it searches the whole page, including the part that is cut off. Do not answer from the summary.`
+      : `${cut} Do not answer a question about a missing section from the page: ${search ? "call search_site for it" : "say the page was cut off"}.`;
+  };
   return [
-    `You answer questions about the web page the user is viewing on ${site}.`,
-    cite
-      ? "If the page content below covers the question, first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them."
-      : "Answer from the page content below whenever it covers the question.",
-    ...toolInstructions,
+    ...instructions,
     "Never answer from outside knowledge. If neither the page nor the search results cover the question, say so.",
+    ...(page.truncated ? [cutNotice()] : []),
     "",
     `Page title: ${page.title}`,
     `Page URL: ${page.url}`,
@@ -1164,6 +1500,20 @@ function padPage(page, targetChars) {
     length += line.length + 1;
   }
   return { ...page, content: lines.join("\n") };
+}
+
+// A cut page at the size Sift sends: the head padded with log lines that can't answer any
+// question above, up to targetChars. The section past the cut is unchanged.
+function padCut(page, targetChars) {
+  const lines = [page.content, "Appendix: write log excerpt"];
+  let length = lines.join("\n").length;
+  for (let n = 1; length < targetChars; n++) {
+    const line = `12:${String(n % 60).padStart(2, "0")}:${String((n * 7) % 60).padStart(2, "0")} UTC region ${n % 12} board ${n} write accepted, no conflicts recorded.`;
+    lines.push(line);
+    length += line.length + 1;
+  }
+  const content = `${lines.join("\n")}\n`;
+  return { ...page, content, full: content + page.full.slice(page.content.length) };
 }
 
 // ---------------------------------------------------------------------------

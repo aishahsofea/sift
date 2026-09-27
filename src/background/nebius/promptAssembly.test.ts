@@ -11,8 +11,8 @@ const page: ExtractedPage = {
   charsOmitted: 0,
 }
 
-const withSearch = { searchEnabled: true, citeEnabled: true }
-const withoutSearch = { searchEnabled: false, citeEnabled: true }
+const withSearch = { searchEnabled: true, citeEnabled: true, pageSearchEnabled: false }
+const withoutSearch = { searchEnabled: false, citeEnabled: true, pageSearchEnabled: false }
 
 describe('assembleAgentMessages', () => {
   it('puts a system message with the page title, URL, and content first', () => {
@@ -98,7 +98,7 @@ describe('assembleAgentMessages', () => {
     })
 
     it('says nothing about cite_page when it is not offered, and keeps the single-path wording', () => {
-      const [system] = assembleAgentMessages(page, [], 'q', { searchEnabled: true, citeEnabled: false })
+      const [system] = assembleAgentMessages(page, [], 'q', { searchEnabled: true, citeEnabled: false, pageSearchEnabled: false })
       expect(system.content).not.toContain('cite_page')
       expect(system.content).not.toContain('two ways')
       expect(system.content).toContain('Answer from the page content below whenever it covers the question.')
@@ -168,6 +168,86 @@ describe('assembleAgentMessages', () => {
       const [second] = assembleAgentMessages(truncatedPage, [], 'second question', withSearch)
       expect(second.content).toBe(first.content)
     })
+  })
+
+  // The page is cut short in the prompt but the rest of it was kept, so search_page can
+  // reach it and a quote is checked against all of it (#11, ADR 0006).
+  describe('when the rest of a cut-short page can be searched', () => {
+    const truncatedPage: ExtractedPage = { ...page, truncated: true, charsOmitted: 126_323, searchable: true }
+    const searchableWithWeb = { searchEnabled: true, citeEnabled: true, pageSearchEnabled: true }
+    const searchableNoWeb = { searchEnabled: false, citeEnabled: true, pageSearchEnabled: true }
+
+    it('names how much was cut and says a summary is still not the section', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableWithWeb)
+      expect(system.content).toContain('126,323 characters')
+      expect(system.content).toContain('every section after the cut is missing')
+      expect(system.content).toContain('a summary is not the section')
+    })
+
+    it('points at search_page, which searches the whole page, rather than at a search of the site', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableWithWeb)
+      const notice = system.content.split('\n').find((line) => line.startsWith('The page content below is cut off'))
+      expect(notice).toContain('call search_page with words from it')
+      expect(notice).toContain('searches the whole page, including the part that is cut off')
+      expect(notice).not.toContain('search_site')
+    })
+
+    it('tells the model to cut short a summary answer, not to say the page was cut off', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableNoWeb)
+      expect(system.content).toContain('Do not answer from the summary.')
+      expect(system.content).not.toContain('say the page was cut off')
+    })
+
+    it('keeps the two paths with a web search, and sends the page path through search_page first', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableWithWeb)
+      const [pagePath, sitePath] = system.content.split('\n').filter((line) => /^[12]\. /.test(line))
+      expect(pagePath).toContain('From the page')
+      expect(pagePath).toContain('call cite_page')
+      expect(pagePath).toContain('call search_page to find them first')
+      expect(sitePath).toContain('From the site')
+      expect(sitePath).toContain('call search_site')
+      expect(sitePath).toContain("Don't call cite_page on this path")
+    })
+
+    it('says search_site and fetch_page results cannot be cited, which is not true of search_page ones', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableWithWeb)
+      expect(system.content).toContain('never search_site or fetch_page results')
+      expect(system.content).not.toContain('never search or fetch results')
+    })
+
+    it('does not promise a search of the site with no Tavily key, and does not say there is no search at all', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableNoWeb)
+      expect(system.content).not.toContain('search_site')
+      expect(system.content).not.toContain('no search available')
+      expect(system.content).toContain("You can't search the rest of the site")
+      expect(system.content).toContain('call search_page to find them first')
+    })
+
+    it('still asks for a cite_page quote before an answer from the page', () => {
+      for (const options of [searchableWithWeb, searchableNoWeb]) {
+        const [system] = assembleAgentMessages(truncatedPage, [], 'q', options)
+        expect(system.content).toContain('call cite_page')
+        expect(system.content).toContain('up to three short passages (a sentence or less each)')
+      }
+    })
+
+    it('leaves the page content untouched and puts the notice before it', () => {
+      const [system] = assembleAgentMessages(truncatedPage, [], 'q', searchableWithWeb)
+      expect(system.content).toContain(truncatedPage.content)
+      expect(system.content.indexOf('cut off')).toBeLessThan(system.content.indexOf('Page content:'))
+    })
+
+    it('is identical from one question to the next, so the cached prefix survives', () => {
+      const [first] = assembleAgentMessages(truncatedPage, [], 'first question', searchableWithWeb)
+      const [second] = assembleAgentMessages(truncatedPage, [], 'second question', searchableWithWeb)
+      expect(second.content).toBe(first.content)
+    })
+  })
+
+  it('checks a quote against the whole text when the prompt only holds the start of it', () => {
+    const head: ExtractedPage = { ...page, truncated: true, charsOmitted: 40 }
+    expect(pageText(head, `${head.content} ${'And then the rest of the page.'}`)).toContain('And then the rest of the page.')
+    expect(pageText(head)).not.toContain('And then the rest of the page.')
   })
 
   it('says nothing about truncation when the page is whole', () => {

@@ -1,4 +1,4 @@
-import { CITE_PAGE, FETCH_PAGE, REQUIRED_TOOL_ARGS, SEARCH_SITE, type ArgKind } from './tools'
+import { CITE_PAGE, FETCH_PAGE, REQUIRED_TOOL_ARGS, SEARCH_PAGE, SEARCH_SITE, type ArgKind } from './tools'
 
 export interface RawToolCall {
   id: string
@@ -11,6 +11,7 @@ export type ParsedToolCall =
   | { ok: true; id: string; name: typeof SEARCH_SITE; args: { query: string } }
   | { ok: true; id: string; name: typeof FETCH_PAGE; args: { url: string } }
   | { ok: true; id: string; name: typeof CITE_PAGE; args: { quotes: string[] } }
+  | { ok: true; id: string; name: typeof SEARCH_PAGE; args: { query: string } }
   | { ok: false; id: string; error: string }
 
 // Validates one tool call before anything is executed. Every rejection is
@@ -52,6 +53,9 @@ export function parseToolCall(call: RawToolCall): ParsedToolCall {
   }
   if (call.name === CITE_PAGE) {
     return { ok: true, id: call.id, name: CITE_PAGE, args: { quotes: (args as { quotes: string[] }).quotes } }
+  }
+  if (call.name === SEARCH_PAGE) {
+    return { ok: true, id: call.id, name: SEARCH_PAGE, args: { query: (args as { query: string }).query } }
   }
   return { ok: true, id: call.id, name: FETCH_PAGE, args: { url: (args as { url: string }).url } }
 }

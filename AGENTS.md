@@ -6,7 +6,9 @@ Guidance for AI coding agents working in this repo.
 
 Sift — Chrome extension. Reads the current page, answers questions about it.
 The model works from the extracted page text and decides for itself when to
-reach for a Tavily search scoped to the current site.
+reach for a Tavily search scoped to the current site. On a page too long for the
+prompt it can also search the rest of the page, locally
+([ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md)).
 
 Backend: [Nebius Token Factory](https://tokenfactory.nebius.com), an NVIDIA
 Nemotron model.
@@ -32,8 +34,9 @@ loop — the model decides when to search; see
   round trip (lists available models, runs one chat completion). Requires
   `.env` with `NEBIUS_API_KEY`.
 - `npm run test:tools` — live spike for native tool calling on Nemotron
-  (stubbed `search_site`/`fetch_page` tools, no Tavily calls) and for the
-  `cite_page` quote check. Pass model IDs to compare models, `--only=<case-id>`
+  (stubbed `search_site`/`fetch_page` tools, no Tavily calls), for the
+  `cite_page` quote check, and for `search_page` on a cut-short page
+  (`--only=cut`). Pass model IDs to compare models, `--only=<case-id>`
   to rerun one case (or a group like `force` or `cite`), `--repeat=<n>` to gauge
   flaky behavior, `--no-cite` for the pre-`cite_page` baseline its cost is
   measured against. It keeps its own copy of the prompt and tool definitions, so
@@ -54,9 +57,10 @@ loop — the model decides when to search; see
 ## Structure
 
 - `src/background/` — service worker. `handlers/` holds the agent loop, page
-  extraction, answer labelling and `cite_page` quote verification, `nebius/` the
-  client plus prompt assembly and tool schema, `tavily/` the site-scoped search,
-  `history/` per-tab session history.
+  extraction, answer labelling, `cite_page` quote verification and the local
+  `search_page` scan, `nebius/` the client plus prompt assembly and tool schema,
+  `tavily/` the site-scoped search, `history/` per-tab session storage (history,
+  the extracted page, and the whole text of a page too long for the prompt).
 - `src/content/` — content script, extracts readable page text via
   `@mozilla/readability`, plus the byline Readability leaves behind
   (`byline.ts`).

@@ -22,6 +22,10 @@ describe('describeStep', () => {
     expect(describeStep({ kind: 'reading', url: 'not a url' })).toBe('Reading not a url…')
   })
 
+  it('shows the words the model is looking for in the rest of the page', () => {
+    expect(describeStep({ kind: 'scanning', query: 'jailbreak' })).toBe('Searching this page for “jailbreak”…')
+  })
+
   it('says the quotes are being checked against the page', () => {
     expect(describeStep({ kind: 'citing' })).toBe('Checking quotes against the page…')
   })

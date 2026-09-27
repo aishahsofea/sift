@@ -38,11 +38,13 @@ export async function extractPage(tabId: number): Promise<BackgroundResponse> {
     return { type: 'EXTRACT_PAGE_RESULT', ok: false, reason: result.reason, message: result.message }
   }
 
+  // Stored first: it says whether the whole text was kept, which the log line and the
+  // panel both report. The page it returns is the head only — the whole text stays here.
+  const page = await setExtractedPage(tabId, result.page, result.fullContent)
   console.log(
-    `[Sift] Extracted page for tab ${tabId}: "${result.page.title}" via ${result.page.extractionMethod}, ${result.page.content.length} chars${result.page.truncated ? ' (truncated)' : ''}${result.page.byline ? ', byline found' : ''}`,
+    `[Sift] Extracted page for tab ${tabId}: "${page.title}" via ${page.extractionMethod}, ${page.content.length} chars${page.truncated ? ` (truncated, ${page.charsOmitted} more ${page.searchable ? 'kept for search_page' : 'not kept'})` : ''}${page.byline ? ', byline found' : ''}`,
   )
-  await setExtractedPage(tabId, result.page)
-  return { type: 'EXTRACT_PAGE_RESULT', ok: true, page: result.page }
+  return { type: 'EXTRACT_PAGE_RESULT', ok: true, page }
 }
 
 interface ContentScriptMessageWaiter {

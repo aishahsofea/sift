@@ -1,7 +1,7 @@
 import { MAX_TOOL_ROUNDS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { AnswerSource, ChatTurn, ExtractedPage } from '../../shared/types'
-import { appendHistoryTurns, getExtractedPage, getHistory } from '../history/sessionHistory'
+import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
 import { getApiKeys } from '../keys'
 import { streamAgentTurn } from '../nebius/client'
 import { assembleAgentMessages, pageText, type ChatMessage } from '../nebius/promptAssembly'
@@ -9,6 +9,7 @@ import { parseToolCall, type ParsedToolCall } from '../nebius/schema'
 import {
   CITE_DONE_NOTE,
   CITE_NUDGE,
+  CITE_NUDGE_CUT,
   CITE_PAGE,
   CITE_PARTIAL_NOTE,
   CITE_RECOVERY_HINT,
@@ -17,14 +18,18 @@ import {
   FORCE_NUDGE,
   FORCE_NUDGE_CITE,
   FORCE_RETRY,
+  PAGE_SEARCH_EMPTY_NOTE,
+  PAGE_SEARCH_NOTE,
   SEARCH_NOTE,
+  SEARCH_PAGE,
   SEARCH_SITE,
   toolsFor,
 } from '../nebius/tools'
 import { extractTavily, searchTavily } from '../tavily/client'
 import { scopeToDomain } from '../tavily/scopeToDomain'
 import { deriveSource } from './answerSource'
-import { verifyQuotes } from './verifyQuotes'
+import { searchPage } from './searchPage'
+import { collapseWhitespace, verifyQuotes } from './verifyQuotes'
 
 // State the loop carries across rounds, scoped to this one question.
 interface LoopState {
@@ -38,6 +43,12 @@ interface LoopState {
   toolsCalled: string[]
   /** An uncited answer was already thrown away and the model asked to quote first. It is asked once. */
   askedToQuote: boolean
+  /** search_page calls that ran this turn. Any at all means the model did look through the page. */
+  pageSearches: number
+  /** Passages those calls returned. None means the page has nothing on those words. */
+  pagePassages: number
+  /** What those passages said, whitespace collapsed: a cut page's "from the page" rests on a quote taken from one (ADR 0006). */
+  passageTexts: string[]
   /** What went wrong with tool calls (rejected quotes, malformed calls). Only feeds the log line. */
   problems: string[]
 }
@@ -50,6 +61,12 @@ interface ToolContext {
   tavilyApiKey: string | undefined
   /** Whether cite_page was offered this turn. A call to it when it wasn't is refused. */
   citeEnabled: boolean
+  /** Whether search_page was offered this turn, which is also whether `fullContent` is there to search. */
+  pageSearchEnabled: boolean
+  /** The whole text of a page the prompt holds only the start of, when it was kept (#11). */
+  fullContent: string | undefined
+  /** What a cite_page quote is checked against: the page as the prompt presents it, the whole of it when the text was kept. */
+  quotable: string
   state: LoopState
 }
 
@@ -79,23 +96,37 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
 
     // Without a Tavily key the web tools can't run, so they aren't offered.
     const searchEnabled = Boolean(tavilyApiKey)
+    // The rest of a page the prompt holds only the start of, when it was kept (#11).
+    // Neither the panel's word for it (`searchable`) nor the text alone is trusted: the
+    // text can be gone if storage was cleared, and then the page is what it was before
+    // #11 — a head, with nothing to search and nothing beyond it to check a quote
+    // against. Local, so a missing Tavily key doesn't take search_page away either.
+    const fullContent = page.truncated && page.searchable ? await getFullPageContent(tabId) : undefined
+    const pageSearchEnabled = fullContent !== undefined
     // cite_page needs no network, so a missing key doesn't take it away. A cut page
-    // does: a quote from its head can't show the answer wasn't about the part that
-    // was cut, so the label stays capped by truncation (deriveSource) and asking for
-    // the quote would cost a round for nothing. Revisit with #11.
-    const citeEnabled = !page.truncated
-    const tools = toolsFor({ searchEnabled, citeEnabled })
+    // does, unless its rest can be searched: a quote from the head alone can't show
+    // the answer wasn't about the part that was cut (deriveSource), so asking for it
+    // would cost a round for nothing.
+    const citeEnabled = !page.truncated || pageSearchEnabled
+    const options = { searchEnabled, citeEnabled, pageSearchEnabled }
+    const tools = toolsFor(options)
     const history = await getHistory(tabId)
-    const messages = assembleAgentMessages(page, history, question, { searchEnabled, citeEnabled })
+    const messages = assembleAgentMessages(page, history, question, options)
     const state: LoopState = {
       allowedUrls: new Set(),
       usedWeb: false,
       verifiedQuotes: new Set(),
       toolsCalled: [],
       askedToQuote: false,
+      pageSearches: 0,
+      pagePassages: 0,
+      passageTexts: [],
       problems: [],
     }
-    const context: ToolContext = { port, page, tavilyApiKey, citeEnabled, state }
+    // A quote is checked against the whole page, not only the part the prompt holds:
+    // the model can quote what search_page found there.
+    const quotable = pageText(page, fullContent)
+    const context: ToolContext = { port, page, tavilyApiKey, citeEnabled, pageSearchEnabled, fullContent, quotable, state }
 
     // Rounds that ran tools. An answer thrown away for want of a quote isn't one, so
     // it doesn't eat into the cap.
@@ -131,7 +162,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       if (!toolCalls.length) {
         if (mustQuoteFirst(context)) {
           state.askedToQuote = true
-          quoteNudge = { role: 'user', content: CITE_NUDGE }
+          quoteNudge = { role: 'user', content: pageSearchEnabled ? CITE_NUDGE_CUT : CITE_NUDGE }
           post(port, { type: 'ASK_STEP', step: { kind: 'citing' } })
           continue
         }
@@ -181,9 +212,16 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
 // can't be quoted for afterwards: a model asked to cite an answer it already wrote
 // finds passages that merely relate to it, which is #5's failure labelled `page`. So it
 // is thrown away, once, and the model is asked to quote first (ADR 0005). Not when the
-// model searched, even to no result: that answer is about the search, not the page.
+// model searched the web, even to no result: that answer is about the search, not the
+// page. search_page is no such search: what it returns is the page, so an answer written
+// after only that has nothing to verify either, and is asked to quote like any other.
 function mustQuoteFirst({ citeEnabled, state }: ToolContext): boolean {
-  return citeEnabled && !state.askedToQuote && state.toolsCalled.length === 0
+  if (!citeEnabled || state.askedToQuote) return false
+  if (!state.toolsCalled.every((name) => name === SEARCH_PAGE)) return false
+  // A search of the rest of the page that found nothing leaves no passage the model
+  // could quote to lift the label: a quote from the part it was given can't (deriveSource).
+  // Asking anyway would only cost a round on an honest "the page doesn't say".
+  return !(state.pageSearches > 0 && state.pagePassages === 0)
 }
 
 async function finish(context: ToolContext, tabId: number, question: string, content: string): Promise<void> {
@@ -206,16 +244,18 @@ async function finish(context: ToolContext, tabId: number, question: string, con
     usedWeb: state.usedWeb,
     quoteVerified: quotes.length > 0,
     pageTruncated: page.truncated,
+    quotedSearchResult: quotesFromSearch(state) > 0,
   })
 
   // One object is both persisted and posted, so the panel shows live exactly what a
-  // reload will read back from history.
+  // reload will read back from history. The cut is only flagged on an answer when it
+  // still limits it: a model that searched the page, even to no result, did look there.
   const turn: ChatTurn = {
     role: 'assistant',
     content: answer,
     source,
     ...(quotes.length ? { quotes } : {}),
-    ...(page.truncated ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
+    ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
   }
 
   logTurn(tabId, source, context)
@@ -227,17 +267,23 @@ async function finish(context: ToolContext, tabId: number, question: string, con
 // in the panel whether the model skipped cite_page, cited and had every quote
 // rejected, or was never offered the tool (a cut page); this is how to tell them apart
 // on a real page, which the fixtures in scripts/ can't do.
-function logTurn(tabId: number, source: AnswerSource, { citeEnabled, state }: ToolContext): void {
+function logTurn(tabId: number, source: AnswerSource, { citeEnabled, pageSearchEnabled, state }: ToolContext): void {
   const cited = state.toolsCalled.filter((name) => name === CITE_PAGE).length
   const cite = !citeEnabled
     ? 'not offered (page cut off)'
     : cited === 0
       ? 'offered, not called'
       : `called ${cited}×, ${state.verifiedQuotes.size} verified`
+  // Only on a page whose cut-off part could be searched: says whether the model looked.
+  const pageSearch = !pageSearchEnabled
+    ? ''
+    : state.pageSearches === 0
+      ? ' search_page: offered, not called.'
+      : ` search_page: called ${state.pageSearches}×, ${state.pagePassages} passages, ${quotesFromSearch(state)} verified quotes from them.`
   const tools = state.toolsCalled.length ? state.toolsCalled.join(', ') : 'none'
   const asked = state.askedToQuote ? ' First answer skipped cite_page; asked to quote first.' : ''
   const problems = state.problems.length ? ` Problems: ${state.problems.join(' | ')}` : ''
-  console.log(`[Sift] tab ${tabId} answered as ${source}. Tools: ${tools}. cite_page: ${cite}.${asked}${problems}`)
+  console.log(`[Sift] tab ${tabId} answered as ${source}. Tools: ${tools}. cite_page: ${cite}.${pageSearch}${asked}${problems}`)
 }
 
 // Runs one validated tool call and returns whatever should go back as its result.
@@ -253,6 +299,11 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
 
   if (call.name === CITE_PAGE) {
     return citePage(context, call.args.quotes)
+  }
+
+  // Before the key check below: it searches the page's own text, so it runs with none.
+  if (call.name === SEARCH_PAGE) {
+    return searchWholePage(context, call.args.query)
   }
 
   // The key is re-checked rather than asserted: a web tool call with no key to run
@@ -287,13 +338,41 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   return { url: call.args.url, content, ...(citeEnabled ? { note: FETCH_NOTE } : {}) }
 }
 
+// search_page: a keyword search of the whole page (#11, ADR 0006), for the part the prompt
+// doesn't hold and, since the model can't find everything in a long head either, the part
+// it does. Everything it returns is page text, so cite_page can check a quote from it;
+// nothing about it is trusted to be an answer. An empty result is a result, not an
+// error: the model is told to try other words or work with what it has.
+function searchWholePage({ port, page, pageSearchEnabled, fullContent, state }: ToolContext, query: string): unknown {
+  if (!pageSearchEnabled || fullContent === undefined) {
+    state.problems.push('search_page is not available.')
+    return { error: 'search_page is not available.' }
+  }
+
+  post(port, { type: 'ASK_STEP', step: { kind: 'scanning', query } })
+
+  // The end of what the prompt holds is where the part it lacks begins: that part gets
+  // slots of its own, so a head that says the word often can't fill the result.
+  const passages = searchPage(fullContent, query, page.content.length)
+  state.pageSearches++
+  state.pagePassages += passages.length
+  for (const { text } of passages) state.passageTexts.push(collapseWhitespace(text))
+  return { passages, note: passages.length ? PAGE_SEARCH_NOTE : PAGE_SEARCH_EMPTY_NOTE }
+}
+
+// How many verified quotes were taken from a passage search_page returned this turn. A
+// quote is stored whitespace-collapsed, as the passages are, so it is a plain substring.
+function quotesFromSearch(state: LoopState): number {
+  return [...state.verifiedQuotes].filter((quote) => state.passageTexts.some((text) => text.includes(quote))).length
+}
+
 // cite_page: checks each quote against the page text and remembers the ones found.
 // A fabricated quote is a recoverable error, not a thrown loop, and the model is never
 // the enforcement point (ADR 0005). With nothing verified the result is the error and
 // the way out. Once anything has, the label has what it needs, so the result says to
 // answer with what verified — including when some quotes were rejected: better the
 // answer leaves out what it could not quote than a round is spent correcting it.
-function citePage({ port, page, citeEnabled, state }: ToolContext, quotes: string[]): unknown {
+function citePage({ port, citeEnabled, quotable, state }: ToolContext, quotes: string[]): unknown {
   if (!citeEnabled) {
     state.problems.push('cite_page is not available.')
     return { error: 'cite_page is not available.' }
@@ -301,7 +380,7 @@ function citePage({ port, page, citeEnabled, state }: ToolContext, quotes: strin
 
   post(port, { type: 'ASK_STEP', step: { kind: 'citing' } })
 
-  const { verified, errors } = verifyQuotes(pageText(page), quotes)
+  const { verified, errors } = verifyQuotes(quotable, quotes)
   for (const quote of verified) state.verifiedQuotes.add(quote)
   state.problems.push(...errors)
 

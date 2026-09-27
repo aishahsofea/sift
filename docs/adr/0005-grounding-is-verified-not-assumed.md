@@ -4,8 +4,9 @@
 - Date: 2026-09-26
 - Related: [ADR 0001](0001-model-driven-agent-loop.md),
   [ADR 0004](0004-fetch-page-url-allowlist.md)
-- Built: rules 1 and 3 in #12, rule 2 in #10. Still `proposed` because #3, which
-  has to report the numbers under Verification, does not exist yet.
+- Built: rules 1 and 3 in #12, rule 2 in #10, the truncation fix in #11
+  ([ADR 0006](0006-long-pages-are-kept-and-searched-locally.md)). Still `proposed`
+  because #3, which has to report the numbers under Verification, does not exist yet.
 
 ## Context
 
@@ -84,7 +85,8 @@ case costs nothing a user waits for.
 names the truncation in chars and says the later sections are absent. The panel
 shows the page as truncated before the first question, and shows it per answer.
 
-**And truncation stops being how long pages are handled.** The full extracted text
+**And truncation stops being how long pages are handled** (built in #11, recorded in
+[ADR 0006](0006-long-pages-are-kept-and-searched-locally.md)). The full extracted text
 is retained in `chrome.storage.session` while only the head goes in the prompt — so
 the cacheable identical prefix ADR 0001 depends on survives — and a local
 `search_page(query)` tool scans the whole text and returns ranked chunks with char
@@ -120,7 +122,9 @@ What the rule became in code, including the parts it did not say.
   because a quote from the head cannot show that the answer was not about the part
   that was cut, which is #5. A round that cannot change the label is a round for
   nothing, so `cite_page` is not offered, not mentioned in the prompt, and refused
-  if called anyway. #11 is what changes this.
+  if called anyway. #11 changed this ([ADR 0006](0006-long-pages-are-kept-and-searched-locally.md)):
+  where the rest of the page was kept, `cite_page` is offered on a cut page and checks
+  quotes against all of it. Where it wasn't kept, this is still how it works.
 - The verified quotes are stored on the turn (`ChatTurn.quotes`). The chip says how
   many were checked ("from the page · 1 quote checked"), not that the answer was.
   There is no evidence view yet.

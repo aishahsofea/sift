@@ -4,12 +4,17 @@ function characters(count: number): string {
   return `${count.toLocaleString('en-US')} characters`
 }
 
-// Above the thread, before the first question.
-export function describeTruncatedPage(charsOmitted: number): string {
-  return `The last ${characters(charsOmitted)} of this page weren't read, so answers about that part can't come from the page.`
+// Above the thread, before the first question. Where the rest of the page was kept the
+// model can search it (#11), so the banner says that rather than that it wasn't read;
+// where it wasn't kept, it says what it always did.
+export function describeTruncatedPage(charsOmitted: number, searchable: boolean): string {
+  return searchable
+    ? `Sift reads the start up front and searches the remaining ${characters(charsOmitted)} when a question needs them.`
+    : `The last ${characters(charsOmitted)} of this page weren't read, so answers about that part can't come from the page.`
 }
 
-// On each answer given against such a page.
+// On an answer given against such a page without the model looking past the cut: either
+// it never searched the rest, or there was nothing to search.
 export function describeTruncatedAnswer(charsOmitted: number): string {
   return `Page was cut off: ${characters(charsOmitted)} weren't read.`
 }

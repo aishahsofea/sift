@@ -1,12 +1,14 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability'
+import { RETAINED_PAGE_CHAR_LIMIT } from '../shared/constants'
 import { truncate } from '../shared/truncate'
 import { extractByline } from './byline'
 import type { ExtractedPage, UnreadableReason } from '../shared/types'
 import type { ContentScriptMessage } from '../shared/messages'
 
 type ExtractionFailure = { reason: UnreadableReason; message: string }
+type Extraction = { page: ExtractedPage; fullContent?: string }
 
-function extract(): ExtractedPage | ExtractionFailure {
+function extract(): Extraction | ExtractionFailure {
   try {
     // .parse() mutates the document it's given, so hand it a clone and keep
     // the live document untouched for the innerText fallback below.
@@ -38,13 +40,19 @@ function extract(): ExtractedPage | ExtractionFailure {
     const byline = extractByline(document)
 
     return {
-      url: document.URL,
-      title,
-      content: truncatedContent,
-      ...(byline ? { byline } : {}),
-      extractionMethod,
-      truncated,
-      charsOmitted,
+      page: {
+        url: document.URL,
+        title,
+        content: truncatedContent,
+        ...(byline ? { byline } : {}),
+        extractionMethod,
+        truncated,
+        charsOmitted,
+      },
+      // The prompt only holds `truncatedContent`. The whole text goes along so the
+      // model can search the rest (#11) — unless it is too big to keep, in which case
+      // the page stays what it was before: a head, and nothing to search.
+      ...(truncated && content.length <= RETAINED_PAGE_CHAR_LIMIT ? { fullContent: content } : {}),
     }
   } catch (error) {
     return {
@@ -54,7 +62,7 @@ function extract(): ExtractedPage | ExtractionFailure {
   }
 }
 
-function isFailure(result: ExtractedPage | ExtractionFailure): result is ExtractionFailure {
+function isFailure(result: Extraction | ExtractionFailure): result is ExtractionFailure {
   return 'reason' in result
 }
 
@@ -62,6 +70,6 @@ const result = extract()
 
 const message: ContentScriptMessage = isFailure(result)
   ? { type: 'PAGE_EXTRACTION_FAILED', reason: result.reason, message: result.message }
-  : { type: 'PAGE_EXTRACTED', page: result }
+  : { type: 'PAGE_EXTRACTED', page: result.page, ...(result.fullContent !== undefined ? { fullContent: result.fullContent } : {}) }
 
 chrome.runtime.sendMessage(message)
