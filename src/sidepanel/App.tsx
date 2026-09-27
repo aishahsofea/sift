@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../shared/messages'
 import { ChatInput } from './components/ChatInput'
 import { ChatThread } from './components/ChatThread'
+import { EmptyChatState } from './components/EmptyChatState'
 import { MissingApiKeysState } from './components/MissingApiKeysState'
 import { TruncationNotice } from './components/TruncationNotice'
 import { UnreadablePageState } from './components/UnreadablePageState'
@@ -10,7 +11,7 @@ import { useChat } from './hooks/useChat'
 
 export default function App() {
   const { tabId, status } = useActiveTab()
-  const { turns, asking, error, ask, clear } = useChat(tabId)
+  const { turns, asking, error, ask, clear, historyLoaded } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -42,7 +43,11 @@ export default function App() {
           {status.page.truncated && (
             <TruncationNotice charsOmitted={status.page.charsOmitted} searchable={status.page.searchable === true} />
           )}
-          <ChatThread turns={turns} />
+          {historyLoaded && turns.length === 0 ? (
+            <EmptyChatState title={status.page.title} />
+          ) : (
+            <ChatThread turns={turns} />
+          )}
           {error && (
             <p role="alert" className="chat-error">
               {error}
