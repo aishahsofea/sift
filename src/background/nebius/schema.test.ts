@@ -25,6 +25,29 @@ describe('parseToolCall', () => {
     expect(parsed).toEqual({ ok: true, id: 'call_1', name: 'fetch_page', args: { url: 'https://example.com/a' } })
   })
 
+  describe('search_page', () => {
+    const scan = (args: unknown) => call({ name: 'search_page', argsText: JSON.stringify(args) })
+
+    it('parses a query', () => {
+      expect(parseToolCall(scan({ query: 'jailbreak' }))).toEqual({
+        ok: true,
+        id: 'call_1',
+        name: 'search_page',
+        args: { query: 'jailbreak' },
+      })
+    })
+
+    it('rejects a missing or blank query', () => {
+      expect(parseToolCall(scan({})).ok).toBe(false)
+      expect(parseToolCall(scan({ query: '  ' })).ok).toBe(false)
+    })
+
+    it('ignores arguments it does not declare, such as a range to search', () => {
+      const parsed = parseToolCall(scan({ query: 'jailbreak', from: 0 }))
+      expect(parsed).toEqual({ ok: true, id: 'call_1', name: 'search_page', args: { query: 'jailbreak' } })
+    })
+  })
+
   describe('cite_page', () => {
     const cite = (args: unknown) => call({ name: 'cite_page', argsText: JSON.stringify(args) })
 

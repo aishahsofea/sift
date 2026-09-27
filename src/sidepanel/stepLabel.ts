@@ -9,6 +9,8 @@ export function describeStep(step: AgentStep): string {
       return `Searching ${step.domain} for “${step.query}”…`
     case 'reading':
       return `Reading ${shortenUrl(step.url)}…`
+    case 'scanning':
+      return `Searching this page for “${step.query}”…`
     case 'citing':
       return 'Checking quotes against the page…'
   }

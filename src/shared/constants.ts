@@ -22,4 +22,23 @@ export const MIN_QUOTE_CHARS = 10
 // can already be TRUNCATION_CHAR_LIMIT chars, so cap what one tool round adds.
 export const FETCHED_PAGE_CHAR_LIMIT = 20_000
 
+// The most of a page kept whole for search_page and cite_page once it outgrows the
+// prompt (#11, ADR 0006). It is all or nothing: a page longer than this keeps only its
+// head, as before, rather than a second cut that search_page couldn't explain. About
+// eight times the prompt limit, and small enough that a few of them fit in the 10 MB
+// chrome.storage.session quota.
+export const RETAINED_PAGE_CHAR_LIMIT = 1_000_000
+
+// One search_page passage is a window this many characters wide, and one call returns
+// at most PAGE_SEARCH_MAX_PASSAGES of them, so a round adds at most 6,000 characters —
+// well under FETCHED_PAGE_CHAR_LIMIT, the cap on what a fetch_page round adds. Even, so
+// the windows overlap by exactly half.
+export const PAGE_SEARCH_PASSAGE_CHARS = 1_500
+export const PAGE_SEARCH_MAX_PASSAGES = 4
+// How many of those slots go to the part of the page the prompt doesn't hold before the
+// rest are filled by rank. The search covers the whole page, since the model can't
+// reliably find things in a 40,000-token head either; without this, a head that says the
+// word more often than the section past the cut would fill every slot and hide it.
+export const PAGE_SEARCH_CUT_PASSAGES = 2
+
 export const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1'

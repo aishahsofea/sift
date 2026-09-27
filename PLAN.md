@@ -30,7 +30,9 @@ resilience beyond what's listed.
 
 > Decisions taken after this plan live in [docs/adr/](docs/adr/). The
 > **Fallback trigger** and **Streaming** rows below are superseded by
-> [ADR 0001](docs/adr/0001-model-driven-agent-loop.md).
+> [ADR 0001](docs/adr/0001-model-driven-agent-loop.md), and the
+> **Context/truncation** row by
+> [ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md).
 
 | Area | Decision |
 |---|---|

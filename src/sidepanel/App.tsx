@@ -39,7 +39,9 @@ export default function App() {
 
       {chatReady && (
         <>
-          {status.page.truncated && <TruncationNotice charsOmitted={status.page.charsOmitted} />}
+          {status.page.truncated && (
+            <TruncationNotice charsOmitted={status.page.charsOmitted} searchable={status.page.searchable === true} />
+          )}
           <ChatThread turns={turns} />
           {error && (
             <p role="alert" className="chat-error">

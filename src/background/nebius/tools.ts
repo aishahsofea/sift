@@ -1,12 +1,13 @@
 // Tool definitions sent with every non-forced round, and the text that ends the
 // loop. Both are verified prompt surface, not incidental strings: the wording was
 // exercised by scripts/test-nebius-tools.mjs against the real endpoint
-// (ADR 0001 / ADR 0003 / ADR 0005), so changing it means re-running
+// (ADR 0001 / ADR 0003 / ADR 0005 / ADR 0006), so changing it means re-running
 // `npm run test:tools`, whose copy of these definitions has to change with them.
 
 export const SEARCH_SITE = 'search_site'
 export const FETCH_PAGE = 'fetch_page'
 export const CITE_PAGE = 'cite_page'
+export const SEARCH_PAGE = 'search_page'
 
 const SEARCH_TOOLS = [
   {
@@ -68,6 +69,55 @@ export const CITE_TOOL = {
   },
 } as const
 
+// The tool for a page too long for the prompt (#11, ADR 0006): a keyword search of the
+// whole page, run in the extension, so it needs no network and is offered whether or not
+// search is. The whole page and not only the part that was cut off, because the model
+// can't reliably find a section in a 40,000-token head either; the part that was cut off
+// still gets slots of its own in every result (searchPage), so a head that names a word
+// often cannot hide the section the tool is there to reach.
+export const SEARCH_PAGE_TOOL = {
+  type: 'function',
+  function: {
+    name: SEARCH_PAGE,
+    description:
+      "Search the whole page, including the part that is cut off from the page content. Returns the passages that best match your words, each with the character offset it starts at. Use it when the question is about a part of the page that isn't in the page content.",
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: "The words to look for, as they'd be written on the page: names and key terms, not a whole question.",
+        },
+      },
+      required: ['query'],
+    },
+  },
+} as const
+
+// cite_page as offered next to search_page. Same tool and same check, but a passage
+// search_page returned is page text and can be cited, where the whole-page description
+// says search results can't be — and it is checked against the whole page, not only the
+// part in the prompt. Kept apart from CITE_TOOL so the wording verified for whole pages
+// (ADR 0005) is not touched.
+export const CITE_TOOL_CUT = {
+  ...CITE_TOOL,
+  function: {
+    ...CITE_TOOL.function,
+    description:
+      "Quote the passages of the page that support your answer. Call it before you answer from the page, whether the passages are in the page content or came from search_page; search_site and fetch_page results can't be cited. Each quote is checked against the whole page, so copy it word for word: a quote that isn't found is rejected.",
+    parameters: {
+      ...CITE_TOOL.function.parameters,
+      properties: {
+        quotes: {
+          ...CITE_TOOL.function.parameters.properties.quotes,
+          description:
+            'Up to three short passages, each a sentence or less, copied exactly from the page: no paraphrasing, no ellipses.',
+        },
+      },
+    },
+  },
+} as const
+
 // Added to search_site and fetch_page results when cite_page is on offer. After a
 // search the model cited the snippet ("it matches the page"), which is rejected, and
 // the wasted rounds ran into the round cap. The system prompt saying so was not
@@ -96,18 +146,37 @@ export const CITE_PARTIAL_NOTE = "Only the verified passages are on the page. An
 // something that isn't there.
 export const CITE_NUDGE =
   "Before you answer, call cite_page with up to three short passages from the page content that support your answer, copied word for word. If the page content doesn't cover the question, say so instead."
+// The same ask on a page whose cut-off part search_page can reach: the passages may be
+// there, so the way out includes looking, not only saying the page doesn't cover it.
+export const CITE_NUDGE_CUT =
+  "Before you answer, call cite_page with up to three short passages from the page that support your answer, copied word for word. If the passages are in the part that is cut off, call search_page for them first. If the page doesn't cover the question, say so instead."
+
+// What search_page's result says. Like SEARCH_NOTE it is in the message the model reads
+// last, because wording elsewhere was not enough to steer what it does next (ADR 0005):
+// here, to turn what it found into a quote and then an answer, not into more searches.
+// Prompt surface, verified live with the tool wording (ADR 0006).
+export const PAGE_SEARCH_NOTE =
+  'These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.'
+export const PAGE_SEARCH_EMPTY_NOTE =
+  'Nothing on the page matches those words. Search again with different words, or answer from what you have.'
 
 interface ToolAvailability {
   /** A Tavily key is configured, so search_site and fetch_page can run. */
   searchEnabled: boolean
-  /** The page reached the model whole, so a quote can vouch for the answer (ADR 0005). */
+  /** The page can be quoted: it reached the model whole, or the rest of it can be checked against (ADR 0005, #11). */
   citeEnabled: boolean
+  /** The page reached the model cut short and the rest of it was kept, so search_page can look through it (#11). */
+  pageSearchEnabled: boolean
 }
 
-// What a round is offered. Empty when neither is available, in which case no
-// `tools` field is sent at all.
-export function toolsFor({ searchEnabled, citeEnabled }: ToolAvailability) {
-  return [...(searchEnabled ? SEARCH_TOOLS : []), ...(citeEnabled ? [CITE_TOOL] : [])]
+// What a round is offered. Empty when none is available, in which case no `tools`
+// field is sent at all.
+export function toolsFor({ searchEnabled, citeEnabled, pageSearchEnabled }: ToolAvailability) {
+  return [
+    ...(searchEnabled ? SEARCH_TOOLS : []),
+    ...(pageSearchEnabled ? [SEARCH_PAGE_TOOL] : []),
+    ...(citeEnabled ? [pageSearchEnabled ? CITE_TOOL_CUT : CITE_TOOL] : []),
+  ]
 }
 
 export type ArgKind = 'string' | 'string[]'
@@ -118,6 +187,7 @@ export const REQUIRED_TOOL_ARGS: Record<string, Record<string, ArgKind>> = {
   [SEARCH_SITE]: { query: 'string' },
   [FETCH_PAGE]: { url: 'string' },
   [CITE_PAGE]: { quotes: 'string[]' },
+  [SEARCH_PAGE]: { query: 'string' },
 }
 
 // Appended as a one-off user message on the forced final call, with `tools`

@@ -16,7 +16,10 @@ export type BackgroundResponse =
 // content script -> background: correlated via sender.tab.id, NOT a self-reported field
 // (a content script has no chrome.tabs access, so it structurally cannot supply its own tabId)
 export type ContentScriptMessage =
-  | { type: 'PAGE_EXTRACTED'; page: ExtractedPage }
+  // `fullContent` is the whole extracted text, sent only when `page` is the cut-short
+  // head of it and the whole is small enough to keep (#11). The background stores it
+  // apart from `page`, so the page the panel and the prompt read stays the size it was.
+  | { type: 'PAGE_EXTRACTED'; page: ExtractedPage; fullContent?: string }
   | { type: 'PAGE_EXTRACTION_FAILED'; reason: UnreadableReason; message: string }
 
 // Every question runs over this port (ADR 0001): the loop can take several

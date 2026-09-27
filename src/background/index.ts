@@ -1,12 +1,18 @@
 import { ASK_PORT_NAME, type AskPortRequest, type BackgroundRequest, type BackgroundResponse } from '../shared/messages'
 import { runAgentLoop } from './handlers/agentLoop'
 import { extractPage } from './handlers/extractPage'
-import { clearHistory, getHistory } from './history/sessionHistory'
+import { clearHistory, clearTabData, getHistory } from './history/sessionHistory'
 import { getApiKeys } from './keys'
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error('Failed to set side panel behavior', error))
+
+// A closed tab's page, whole text and history go with it. Registered at the top level,
+// like the listeners below. Needs no `tabs` permission: it reads only the id.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  clearTabData(tabId).catch((error) => console.error(`[Sift] couldn't clear tab ${tabId}:`, error))
+})
 
 // Registered at the top level, same reasoning as the onMessage listener below.
 chrome.runtime.onConnect.addListener((port) => {
