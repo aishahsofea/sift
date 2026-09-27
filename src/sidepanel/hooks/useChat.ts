@@ -6,6 +6,7 @@ import { useAskStream } from './useAskStream'
 
 export function useChat(tabId: number | null) {
   const [turns, setTurns] = useState<ChatTurn[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const stream = useAskStream()
 
@@ -18,6 +19,7 @@ export function useChat(tabId: number | null) {
       const response = (await chrome.runtime.sendMessage(request)) as BackgroundResponse
       if (!cancelled && response.type === 'HISTORY_RESULT') {
         setTurns(response.turns)
+        setHistoryLoaded(true)
       }
     }
 
@@ -58,7 +60,7 @@ export function useChat(tabId: number | null) {
     ? [...turns, { role: 'assistant', content: stream.text || pendingLabel(stream.step) }]
     : turns
 
-  return { turns: displayTurns, asking: stream.active, error, ask, clear }
+  return { turns: displayTurns, asking: stream.active, error, ask, clear, historyLoaded }
 }
 
 function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {
