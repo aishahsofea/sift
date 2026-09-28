@@ -74,13 +74,15 @@ export const CITE_TOOL = {
 // search is. The whole page and not only the part that was cut off, because the model
 // can't reliably find a section in a 40,000-token head either; the part that was cut off
 // still gets slots of its own in every result (searchPage), so a head that names a word
-// often cannot hide the section the tool is there to reach.
+// often cannot hide the section the tool is there to reach. Also offered, for the rest of
+// a turn, once a fetch_page result itself comes back cut (#7): the same tool, the same
+// mental model ("search the big text that got cut"), rather than a second tool name.
 export const SEARCH_PAGE_TOOL = {
   type: 'function',
   function: {
     name: SEARCH_PAGE,
     description:
-      "Search the whole page, including the part that is cut off from the page content. Returns the passages that best match your words, each with the character offset it starts at. Use it when the question is about a part of the page that isn't in the page content.",
+      "Search the whole page, including the part that is cut off from the page content, or the text of a page you fetched with fetch_page if that came back cut off too. Returns the passages that best match your words, each with the character offset it starts at. Use it when the question is about a part that isn't in what you were given.",
     parameters: {
       type: 'object',
       properties: {
@@ -129,6 +131,17 @@ export const SEARCH_NOTE =
 export const FETCH_NOTE =
   "This is the full text of a fetched page, not the page content the user is viewing, so cite_page can't check it. Answer from it now."
 
+// FETCH_NOTE's cut counterpart (#7): a fetched page can itself be too long
+// (FETCHED_PAGE_CHAR_LIMIT) and come back cut, the same shape truncationNotice()
+// describes for the page the user is viewing. Shown whether or not cite_page is on
+// offer — unlike FETCH_NOTE, this isn't only about steering the model away from citing,
+// it is the only place the model learns the fetch was incomplete and search_page can
+// reach the rest.
+export function FETCH_NOTE_CUT(charsOmitted: number): string {
+  const omitted = charsOmitted.toLocaleString('en-US')
+  return `This is the fetched page, not the page content the user is viewing, so cite_page can't check it either way. It is cut off too: its last ${omitted} characters are not included. If it doesn't have the answer, call search_page with words from the missing part to reach it.`
+}
+
 // What cite_page's result says, and what it asks for when the model skipped it. All
 // prompt surface, verified live like the tool wording (ADR 0005).
 //
@@ -159,6 +172,16 @@ export const PAGE_SEARCH_NOTE =
   'These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.'
 export const PAGE_SEARCH_EMPTY_NOTE =
   'Nothing on the page matches those words. Search again with different words, or answer from what you have.'
+
+// search_page's notes when it searched a fetched page's cut-off text instead of the page
+// the user is viewing (#7). Unlike PAGE_SEARCH_NOTE, these don't ask for a quote: a
+// fetched page is never what cite_page checks against (ADR 0005 scopes verification to
+// the page the user is viewing, and #7 doesn't extend it), so the shape here is
+// SEARCH_NOTE/FETCH_NOTE's — answer or search again — not PAGE_SEARCH_NOTE's.
+export const PAGE_SEARCH_NOTE_FETCHED =
+  "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words."
+export const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
+  'Nothing in the fetched page matches those words. Search again with different words, or answer from what you have.'
 
 interface ToolAvailability {
   /** A Tavily key is configured, so search_site and fetch_page can run. */

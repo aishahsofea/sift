@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_TOOL_ROUNDS, PAGE_SEARCH_MAX_PASSAGES, PAGE_SEARCH_PASSAGE_CHARS } from '../../shared/constants'
+import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_MAX_PASSAGES, PAGE_SEARCH_PASSAGE_CHARS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
@@ -12,11 +12,13 @@ import {
   CITE_NUDGE_CUT,
   CITE_PARTIAL_NOTE,
   FETCH_NOTE,
+  FETCH_NOTE_CUT,
   FORCE_NUDGE,
   FORCE_NUDGE_CITE,
   FORCE_RETRY,
   PAGE_SEARCH_EMPTY_NOTE,
   PAGE_SEARCH_NOTE,
+  PAGE_SEARCH_NOTE_FETCHED,
   SEARCH_NOTE,
 } from '../nebius/tools'
 import { extractTavily, searchTavily } from '../tavily/client'
@@ -461,6 +463,9 @@ describe('with a web result', () => {
       content: 'Pro: $17.50 per user per month.',
       note: FETCH_NOTE,
     })
+    // Short enough to reach in one round: nothing was cut, so there is nothing for
+    // search_page to reach and it stays off the table (#7).
+    expect(toolNames(modelCalls[2].tools)).not.toContain('search_page')
   })
 
   it('adds no note when cite_page is not offered, since there is nothing to warn off', async () => {
@@ -478,6 +483,100 @@ describe('with a web result', () => {
     const { turn } = await ask('How many testers, and how much is Pro?')
 
     expect(turn).toMatchObject({ source: 'page+web', quotes: [QUOTE] })
+  })
+})
+
+// A fetch_page result can itself be too long and come back cut (#7): fetch_page isn't
+// the only tool whose result can outgrow the prompt. search_page reaches the rest of
+// it the same way it already reaches the part of the tab page that was cut off, and
+// takes priority over the tab page when both are cut in the same turn.
+describe('a fetched page that comes back cut (#7)', () => {
+  const results = [{ title: 'Board pruning', url: 'https://loomkit.example/help/board-pruning', content: 'An overview of board pruning.' }]
+  // Longer than FETCHED_PAGE_CHAR_LIMIT regardless of its exact value, with the fact
+  // that answers the question past where the cut falls.
+  const FETCH_TAIL_QUOTE = 'the cumulative influence score falls below a threshold of 0.42'
+  const fetchedFullContent = 'lorem ipsum dolor sit amet '.repeat(Math.ceil(FETCHED_PAGE_CHAR_LIMIT / 27) + 50) + FETCH_TAIL_QUOTE
+  const charsOmitted = fetchedFullContent.length - FETCHED_PAGE_CHAR_LIMIT
+
+  beforeEach(() => {
+    vi.mocked(searchTavily).mockResolvedValue(results)
+    vi.mocked(extractTavily).mockResolvedValue(fetchedFullContent)
+  })
+
+  it('cuts the fetch at FETCHED_PAGE_CHAR_LIMIT and tells the model search_page can reach the rest', async () => {
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    const { turn, error } = await ask('How does board pruning decide what to remove?')
+
+    expect(error).toBeUndefined()
+    const [, fetchResult] = toolResults(3)
+    expect(fetchResult.content).toHaveLength(FETCHED_PAGE_CHAR_LIMIT)
+    expect(fetchResult.note).toBe(FETCH_NOTE_CUT(charsOmitted))
+    expect(turn).toMatchObject({ content: 'The threshold is 0.42.', source: 'web' })
+  })
+
+  it('offers search_page for the rest of the turn once the fetch comes back cut, even though the tab page is whole', async () => {
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    await ask('How does board pruning decide what to remove?')
+
+    expect(toolNames(modelCalls[0].tools)).not.toContain('search_page')
+    expect(toolNames(modelCalls[2].tools)).toEqual(['search_site', 'fetch_page', 'cite_page', 'search_page'])
+  })
+
+  it('does not switch cite_page to the search_page-aware wording: cite_page still only checks the tab page', async () => {
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    await ask('How does board pruning decide what to remove?')
+
+    const cite = (modelCalls[2].tools as { function: { name: string; description: string } }[]).find((t) => t.function.name === 'cite_page')
+    expect(cite?.function.description).not.toContain('came from search_page')
+  })
+
+  it("says the passages search_page found are from the fetched page, not the one being viewed, so cite_page can't check them", async () => {
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    await ask('How does board pruning decide what to remove?')
+
+    const [, , searchPageResult] = toolResults(3)
+    expect(searchPageResult.note).toBe(PAGE_SEARCH_NOTE_FETCHED)
+    const passages = searchPageResult.passages as { text: string }[]
+    expect(passages.some((p) => p.text.includes(FETCH_TAIL_QUOTE))).toBe(true)
+  })
+
+  it('rejects a cite_page call quoting the fetched page, cut or not: cite_page is never offered a way to check it', async () => {
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), cite(FETCH_TAIL_QUOTE), answer('The threshold is 0.42.'))
+
+    const { turn, error } = await ask('How does board pruning decide what to remove?')
+
+    expect(error).toBeUndefined()
+    expect(toolResults(3).at(-1)?.error).toContain('quote not found in page text')
+    expect(turn.source).toBe('web')
+  })
+
+  it('adds the cut-fetch note even with no cite_page on offer at all: it is the instruction to reach the rest, not just a citing warning', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    await ask('How does board pruning decide what to remove?')
+
+    expect(toolNames(modelCalls[2].tools)).toEqual(['search_site', 'fetch_page', 'search_page'])
+    const [, fetchResult] = toolResults(3)
+    expect(fetchResult.note).toBe(FETCH_NOTE_CUT(charsOmitted))
+  })
+
+  it('searches the cut fetch, not the tab page, when both are cut in the same turn: the fetch is the most recent thing asked for', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(cutPage)
+    vi.mocked(getFullPageContent).mockResolvedValue(fullContent)
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    await ask('How does board pruning decide what to remove?')
+
+    const [, , searchPageResult] = toolResults(3)
+    const passages = searchPageResult.passages as { text: string }[]
+    expect(passages.some((p) => p.text.includes(FETCH_TAIL_QUOTE))).toBe(true)
+    expect(passages.some((p) => p.text.includes(TAIL_QUOTE))).toBe(false)
+    expect(searchPageResult.note).toBe(PAGE_SEARCH_NOTE_FETCHED)
   })
 })
 
@@ -739,7 +838,9 @@ describe('a cut-short page whose rest was kept', () => {
       await ask()
 
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page', 'cite_page'])
-      expect(modelCalls[0].messages[0].content).not.toContain('search_page')
+      // Distinct from the fetch-escalation clause (#7), which mentions search_page even
+      // here: this checks the tab-page-specific instruction is what's actually absent.
+      expect(modelCalls[0].messages[0].content).not.toContain('call search_page to find them first')
     })
 
     it('does not even read the kept text for a page that reached the model whole', async () => {
@@ -975,7 +1076,9 @@ describe('a cut-short page whose rest was kept', () => {
       const { turn } = await ask()
 
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page'])
-      expect(modelCalls[0].messages[0].content).not.toContain('search_page')
+      // Distinct from the fetch-escalation clause (#7), which mentions search_page even
+      // here: this checks the tab-page-specific instruction is what's actually absent.
+      expect(modelCalls[0].messages[0].content).not.toContain('call search_page to find them first')
       expect(modelCalls[0].messages[0].content).not.toContain('cite_page')
       expect(turn).toMatchObject({ source: 'unverified', truncated: true })
     })

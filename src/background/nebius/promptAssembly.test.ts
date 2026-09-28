@@ -252,7 +252,10 @@ describe('assembleAgentMessages', () => {
 
   it('says nothing about truncation when the page is whole', () => {
     const [system] = assembleAgentMessages(page, [], 'q', withSearch)
-    expect(system.content).not.toContain('cut off')
+    // Distinct from the fetch-escalation clause (#7), which mentions "cut off" even
+    // here (a fetched page can come back cut regardless of the tab page): this checks
+    // the tab-page truncation notice specifically is what's actually absent.
+    expect(system.content).not.toContain('The page content below is cut off')
     expect(system.content).not.toContain('characters')
   })
 

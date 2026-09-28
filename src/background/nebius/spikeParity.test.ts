@@ -11,11 +11,14 @@ import {
   CITE_TOOL,
   CITE_TOOL_CUT,
   FETCH_NOTE,
+  FETCH_NOTE_CUT,
   FORCE_NUDGE,
   FORCE_NUDGE_CITE,
   FORCE_RETRY,
   PAGE_SEARCH_EMPTY_NOTE,
+  PAGE_SEARCH_EMPTY_NOTE_FETCHED,
   PAGE_SEARCH_NOTE,
+  PAGE_SEARCH_NOTE_FETCHED,
   SEARCH_NOTE,
   SEARCH_PAGE_TOOL,
 } from './tools'
@@ -43,6 +46,14 @@ type SpikePage = Pick<ExtractedPage, 'url' | 'title' | 'content'> & { truncated?
 function spikeSystemPrompt(): (page: SpikePage, options: { search: boolean; cite: boolean; pageSearch?: boolean }) => string {
   const source = script.match(/function systemPrompt\([^)]*\) \{[\s\S]*?\n\}\n/)?.[0]
   if (!source) throw new Error('systemPrompt() not found in scripts/test-nebius-tools.mjs')
+  return (0, eval)(`(${source})`)
+}
+
+// The script's FETCH_NOTE_CUT, lifted out the same way: a function, not a plain string,
+// so it is compared by calling both sides with the same input rather than by substring.
+function spikeFetchNoteCut(): (charsOmitted: number) => string {
+  const source = script.match(/function FETCH_NOTE_CUT\([^)]*\) \{[\s\S]*?\n\}\n/)?.[0]
+  if (!source) throw new Error('FETCH_NOTE_CUT not found in scripts/test-nebius-tools.mjs')
   return (0, eval)(`(${source})`)
 }
 
@@ -108,9 +119,13 @@ describe('scripts/test-nebius-tools.mjs parity', () => {
   })
 
   it('checks the note it puts in a search_page result, found or not', () => {
-    for (const text of [PAGE_SEARCH_NOTE, PAGE_SEARCH_EMPTY_NOTE]) {
+    for (const text of [PAGE_SEARCH_NOTE, PAGE_SEARCH_EMPTY_NOTE, PAGE_SEARCH_NOTE_FETCHED, PAGE_SEARCH_EMPTY_NOTE_FETCHED]) {
       expect(script).toContain(text)
     }
+  })
+
+  it('checks the note it puts in a fetch_page result that came back cut (#7)', () => {
+    expect(spikeFetchNoteCut()(12_345)).toBe(FETCH_NOTE_CUT(12_345))
   })
 
   it('checks the nudge that asks for quotes after an uncited answer, on a whole page and on a cut one', () => {

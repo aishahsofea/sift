@@ -65,7 +65,7 @@ function answerInstructions(site: string, options: AgentPromptOptions): string[]
       return [
         `${intro} There are two ways to answer.`,
         `1. From the page, when it covers the question: first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them. ${findFirst}`,
-        `2. From the site, when the page doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results. Don't call cite_page on this path: it only checks the page, never search_site or fetch_page results.`,
+        `2. From the site, when the page doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. If that page comes back cut off too, call search_page to reach the rest of it. Then answer from the results. Don't call cite_page on this path: it only checks the page, never search_site or fetch_page results.`,
       ]
     }
     return [
@@ -79,7 +79,7 @@ function answerInstructions(site: string, options: AgentPromptOptions): string[]
     return [
       `${intro} There are two ways to answer.`,
       '1. From the page content below, when it covers the question: first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them.',
-      `2. From the site, when the page content doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results. Don't call cite_page on this path: it only checks the page content below, never search or fetch results.`,
+      `2. From the site, when the page content doesn't cover the question (or only part of it): call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. If that page comes back cut off too, call search_page to reach the rest of it. Then answer from the results. Don't call cite_page on this path: it only checks the page content below, never search or fetch results.`,
     ]
   }
 
@@ -88,7 +88,7 @@ function answerInstructions(site: string, options: AgentPromptOptions): string[]
       intro,
       'Answer from the page content below whenever it covers the question.',
       `If it doesn't (or only covers part of it), call search_site to search ${site}. If the results don't help, search again with a better query.`,
-      "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full.",
+      "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full. If that page comes back cut off too, call search_page to reach the rest of it.",
     ]
   }
 

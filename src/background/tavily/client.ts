@@ -1,5 +1,3 @@
-import { FETCHED_PAGE_CHAR_LIMIT } from '../../shared/constants'
-import { truncate } from '../../shared/truncate'
 import { withRetry } from '../../shared/withRetry'
 import { scopeToDomain } from './scopeToDomain'
 
@@ -37,8 +35,11 @@ export async function searchTavily(apiKey: string, query: string, pageUrl: strin
   return (body.results ?? []).map((r) => ({ title: r.title, url: r.url, content: r.content }))
 }
 
-// Full text of one search result, for when its snippet wasn't enough. The caller
-// only passes URLs a search returned in this same turn (ADR 0004).
+// Full text of one search result, for when its snippet wasn't enough. The caller only
+// passes URLs a search returned in this same turn (ADR 0004). Returned whole, uncut:
+// the caller (agentLoop.ts's runTool) is what decides how much of it fits in a tool
+// result and keeps the rest for search_page to reach (#7) — this function has no
+// opinion on that, the same way it has none on how the tab's own page is truncated.
 export async function extractTavily(apiKey: string, url: string): Promise<string> {
   const res = await withRetry(`${TAVILY_BASE_URL}/extract`, {
     method: 'POST',
@@ -52,11 +53,7 @@ export async function extractTavily(apiKey: string, url: string): Promise<string
   }
 
   const body = JSON.parse(text) as { results?: { url: string; raw_content?: string }[] }
-  const raw = body.results?.[0]?.raw_content
-  if (!raw) {
-    // A URL Tavily can't extract lands in failed_results, not results. That's a
-    // tool-level outcome the model can work around, not a request failure.
-    return ''
-  }
-  return truncate(raw, FETCHED_PAGE_CHAR_LIMIT).content
+  // A URL Tavily can't extract lands in failed_results, not results. That's a
+  // tool-level outcome the model can work around, not a request failure.
+  return body.results?.[0]?.raw_content ?? ''
 }
