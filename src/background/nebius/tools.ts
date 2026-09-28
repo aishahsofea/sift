@@ -126,8 +126,15 @@ export const CITE_TOOL_CUT = {
 // enough; said in the result, which the model reads last, and with the two-path
 // prompt (promptAssembly.ts), cite_page calls after a search went from 11 of 12 runs
 // to 0 of 47. Neither change alone was enough (ADR 0005).
+//
+// SEARCH_NOTE also names fetch_page explicitly (#7): the system prompt already says to
+// call it when a snippet isn't enough, but on a real page the model read this note last
+// and stopped there instead — same lesson as the cite_page fix, applied one note over.
+// Measured (ADR 0009): given a search with a round left to read in, the page was read in
+// 30 of 31 runs with this wording and 21 of 26 with the earlier "Answer from them now, or
+// search again"; the runs that did not read searched again, or ran search_page on the tab page.
 export const SEARCH_NOTE =
-  "These are search results, not the page content, so cite_page can't check them. Answer from them now, or search again."
+  "These are search results, not the page content, so cite_page can't check them. If a snippet has the answer, use it now. If none does, call fetch_page with that result's URL to read it in full, or search again with a better query."
 export const FETCH_NOTE =
   "This is the full text of a fetched page, not the page content the user is viewing, so cite_page can't check it. Answer from it now."
 

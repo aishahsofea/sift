@@ -337,9 +337,9 @@ const PRUNING_SCORE = /0\.87/;
 // #7's shape on the fictional site: the search snippet half-answers the question (it names
 // the mechanism, not the score), so answering from it is tempting, and the page has the rest.
 // Measured 2026-09-28, 12 runs each: the model read the page 5 times and answered from the
-// snippet 7 times, with SEARCH_NOTE as it is and with a rewording that named fetch_page
-// alike (so the rewording was dropped), and no snippet-based answer asserted anything only
-// the page says (ADR 0009).
+// snippet 7 times, on the earlier SEARCH_NOTE and on the reworded one alike. The rewording
+// moves something else, whether a snippet that lacks the answer gets the page read (ADR 0009).
+// No snippet-based answer asserted anything only the page says.
 const PARTIAL_URL = "https://loomkit.example/help/board-archiving";
 const PARTIAL_SNIPPET = "Loomkit automatically archives boards that have gone inactive. Archiving is based on how recently a board was edited.";
 const PARTIAL_PAGE = [
@@ -1212,7 +1212,7 @@ function withWebNote(output, kind, charsOmitted = 0) {
   const note =
     kind === "fetch"
       ? "This is the full text of a fetched page, not the page content the user is viewing, so cite_page can't check it. Answer from it now."
-      : "These are search results, not the page content, so cite_page can't check them. Answer from them now, or search again.";
+      : "These are search results, not the page content, so cite_page can't check them. If a snippet has the answer, use it now. If none does, call fetch_page with that result's URL to read it in full, or search again with a better query.";
   return { ...output, note };
 }
 
