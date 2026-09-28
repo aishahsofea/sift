@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import { resolveNemotronModel } from '../background/nebius/modelDiscovery'
-import { searchTavily, type TavilySearchResult } from '../background/tavily/client'
+import { extractTavily, searchTavily, type TavilySearchResult } from '../background/tavily/client'
 import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../background/history/sessionHistory'
 import { getApiKeys } from '../background/keys'
 import { runAgentLoop } from '../background/handlers/agentLoop'
@@ -41,6 +41,8 @@ export interface RunCaseInput {
   tavilyApiKey?: string
   /** Canned search_site results. Omit for a case that must not be able to search. */
   searchResults?: TavilySearchResult[]
+  /** Canned fetch_page (extractTavily) result. Omit for a case that must not fetch. */
+  extractResult?: string
 }
 
 export interface RunCaseResult {
@@ -56,7 +58,7 @@ let tabCounter = 0
 // agentLoop.test.ts mocks faked: sessionHistory, keys, tavily/client. streamAgentTurn
 // (Nebius) is never mocked here — it is the thing this eval measures.
 export async function runCase(input: RunCaseInput): Promise<RunCaseResult> {
-  const { page, fullContent, question, history = [], tavilyApiKey, searchResults } = input
+  const { page, fullContent, question, history = [], tavilyApiKey, searchResults, extractResult } = input
   const nebiusApiKey = requireNebiusApiKey()
   await ensureModelLogged(nebiusApiKey)
 
@@ -67,6 +69,9 @@ export async function runCase(input: RunCaseInput): Promise<RunCaseResult> {
   vi.mocked(appendHistoryTurns).mockResolvedValue([])
   if (searchResults) {
     vi.mocked(searchTavily).mockResolvedValue(searchResults)
+  }
+  if (extractResult !== undefined) {
+    vi.mocked(extractTavily).mockResolvedValue(extractResult)
   }
 
   const posted: AskPortMessage[] = []
