@@ -22,3 +22,4 @@ ADR NNNN` — edit the status of the old record instead of deleting it.
 | [0006](0006-long-pages-are-kept-and-searched-locally.md) | Long pages are kept whole and searched locally, not truncated | proposed |
 | [0007](0007-grounding-eval-set.md) | The grounding eval set | accepted |
 | [0008](0008-side-panel-is-opened-per-tab-by-hand.md) | Side panel is opened per tab by hand, not via a manifest `default_path` | accepted |
+| [0009](0009-fetch-page-escalates-and-reaches-past-its-cut.md) | A cut `fetch_page` result is searched like a cut page | proposed |

@@ -8,7 +8,9 @@ Sift — Chrome extension. Reads the current page, answers questions about it.
 The model works from the extracted page text and decides for itself when to
 reach for a Tavily search scoped to the current site. On a page too long for the
 prompt it can also search the rest of the page, locally
-([ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md)).
+([ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md)), and
+the same for a fetched page that is itself too long
+([ADR 0009](docs/adr/0009-fetch-page-escalates-and-reaches-past-its-cut.md)).
 
 Backend: [Nebius Token Factory](https://tokenfactory.nebius.com), an NVIDIA
 Nemotron model.
@@ -36,7 +38,8 @@ loop — the model decides when to search; see
 - `npm run test:tools` — live spike for native tool calling on Nemotron
   (stubbed `search_site`/`fetch_page` tools, no Tavily calls), for the
   `cite_page` quote check, and for `search_page` on a cut-short page
-  (`--only=cut`). Pass model IDs to compare models, `--only=<case-id>`
+  (`--only=cut`) or on a cut-short `fetch_page` result (`--only=fetch`). Pass
+  model IDs to compare models, `--only=<case-id>`
   to rerun one case (or a group like `force` or `cite`), `--repeat=<n>` to gauge
   flaky behavior, `--no-cite` for the pre-`cite_page` baseline its cost is
   measured against. It keeps its own copy of the prompt and tool definitions, so
@@ -46,10 +49,14 @@ loop — the model decides when to search; see
   grounding regression net (issue #3): drives the real `runAgentLoop` against
   the live Nebius API (`sessionHistory`/`keys`/`tavily/client` mocked, nothing
   else), on a fictional-site fixture and a real long page
-  (`transformer-circuits.pub`, the #5 page). `EVAL_REPEATS` controls how many
+  (`transformer-circuits.pub`, the #5 page), plus that page's companion paper
+  fetched through a mocked `fetch_page` (#7, `fetchPageEscalation.eval.ts`).
+  `EVAL_REPEATS` controls how many
   times each case repeats (default 5). Separate from `npm run test` (a
   different Vitest config, `*.eval.ts` not `*.test.ts`) because these calls hit
   the real API and cost real time; see [ADR 0007](docs/adr/0007-grounding-eval-set.md).
+  Run one eval process at a time: several at once against one key get 4xx
+  responses from Nebius, which the client reports as a key error.
 
 ## Environment
 

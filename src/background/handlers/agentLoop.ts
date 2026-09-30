@@ -1,6 +1,7 @@
-import { MAX_TOOL_ROUNDS } from '../../shared/constants'
+import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { AnswerSource, ChatTurn, ExtractedPage } from '../../shared/types'
+import { truncate } from '../../shared/truncate'
 import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
 import { getApiKeys } from '../keys'
 import { streamAgentTurn } from '../nebius/client'
@@ -15,13 +16,17 @@ import {
   CITE_RECOVERY_HINT,
   containsToolMarkup,
   FETCH_NOTE,
+  FETCH_NOTE_CUT,
   FORCE_NUDGE,
   FORCE_NUDGE_CITE,
   FORCE_RETRY,
   PAGE_SEARCH_EMPTY_NOTE,
+  PAGE_SEARCH_EMPTY_NOTE_FETCHED,
   PAGE_SEARCH_NOTE,
+  PAGE_SEARCH_NOTE_FETCHED,
   SEARCH_NOTE,
   SEARCH_PAGE,
+  SEARCH_PAGE_TOOL,
   SEARCH_SITE,
   toolsFor,
 } from '../nebius/tools'
@@ -49,6 +54,14 @@ interface LoopState {
   pagePassages: number
   /** What those passages said, whitespace collapsed: a cut page's "from the page" rests on a quote taken from one (ADR 0006). */
   passageTexts: string[]
+  /**
+   * The full text of the most recent fetch_page result that came back cut (#7),
+   * turn-scoped like the rest of this state (ADR 0004): a later question re-fetches
+   * rather than reusing a stale one. Set, never cleared, by a cut fetch — search_page
+   * searches this in preference to the tab page whenever it is set, since a cut fetch is
+   * the most recent thing the model asked to read.
+   */
+  fetchedFullContent: string | undefined
   /** What went wrong with tool calls (rejected quotes, malformed calls). Only feeds the log line. */
   problems: string[]
 }
@@ -121,6 +134,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       pageSearches: 0,
       pagePassages: 0,
       passageTexts: [],
+      fetchedFullContent: undefined,
       problems: [],
     }
     // A quote is checked against the whole page, not only the part the prompt holds:
@@ -151,8 +165,15 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
           : messages
       quoteNudge = undefined
 
+      // search_page comes onto the table for the rest of the turn once a fetch_page
+      // result comes back cut (#7), even on a page where pageSearchEnabled was false —
+      // spliced in here rather than by changing toolsFor()'s signature, so citeEnabled's
+      // cut/whole wording choice stays pinned to the tab page, untouched by fetch state.
+      // Already in `tools` when pageSearchEnabled, so it is never added twice.
+      const roundTools = pageSearchEnabled || state.fetchedFullContent === undefined ? tools : [...tools, SEARCH_PAGE_TOOL]
+
       const { content, toolCalls } = await streamAgentTurn(nebiusApiKey, turnMessages, {
-        tools: forced || !tools.length ? undefined : tools,
+        tools: forced || !roundTools.length ? undefined : roundTools,
         // An answer that is about to be thrown away is not shown while it is written.
         onContent: (delta) => {
           if (!mustQuoteFirst(context)) post(port, { type: 'ASK_CHUNK', delta })
@@ -330,12 +351,23 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   }
 
   post(port, { type: 'ASK_STEP', step: { kind: 'reading', url: call.args.url } })
-  const content = await extractTavily(tavilyApiKey, call.args.url)
-  if (!content) {
+  const raw = await extractTavily(tavilyApiKey, call.args.url)
+  if (!raw) {
     return { error: "That page couldn't be read. Use the search snippets, or search again." }
   }
   state.usedWeb = true
-  return { url: call.args.url, content, ...(citeEnabled ? { note: FETCH_NOTE } : {}) }
+
+  // A fetched page is a whole article and can outgrow the same tool-result budget the
+  // tab's own page is capped at (FETCHED_PAGE_CHAR_LIMIT), so it is cut here exactly like
+  // the tab page is, and the rest kept for search_page to reach (#7) instead of leaving
+  // it out with no way back in.
+  const fetched = truncate(raw, FETCHED_PAGE_CHAR_LIMIT)
+  if (fetched.truncated) state.fetchedFullContent = raw
+  // FETCH_NOTE_CUT is shown regardless of citeEnabled: unlike FETCH_NOTE, it is not only
+  // about steering the model away from citing, it is the only place the model learns
+  // this fetch was incomplete and search_page can reach the rest.
+  const note = fetched.truncated ? FETCH_NOTE_CUT(fetched.charsOmitted) : citeEnabled ? FETCH_NOTE : undefined
+  return { url: call.args.url, content: fetched.content, ...(note ? { note } : {}) }
 }
 
 // search_page: a keyword search of the whole page (#11, ADR 0006), for the part the prompt
@@ -343,7 +375,22 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
 // it does. Everything it returns is page text, so cite_page can check a quote from it;
 // nothing about it is trusted to be an answer. An empty result is a result, not an
 // error: the model is told to try other words or work with what it has.
+//
+// A cut fetch_page result takes priority over the tab page (#7): it is the most recent
+// thing the model asked to read, and has no other way back into it. Documented scope
+// limit, not solved: if both are cut in the same turn, the fetch wins for the rest of it.
+// Unlike a tab-page passage, a fetched one is never pushed to passageTexts — cite_page
+// never checks against fetched content (ADR 0005 stays scoped to the tab page), so a
+// quote from one could never legitimately earn search-page credit either.
 function searchWholePage({ port, page, pageSearchEnabled, fullContent, state }: ToolContext, query: string): unknown {
+  if (state.fetchedFullContent !== undefined) {
+    post(port, { type: 'ASK_STEP', step: { kind: 'scanning', query } })
+    const passages = searchPage(state.fetchedFullContent, query, FETCHED_PAGE_CHAR_LIMIT)
+    state.pageSearches++
+    state.pagePassages += passages.length
+    return { passages, note: passages.length ? PAGE_SEARCH_NOTE_FETCHED : PAGE_SEARCH_EMPTY_NOTE_FETCHED }
+  }
+
   if (!pageSearchEnabled || fullContent === undefined) {
     state.problems.push('search_page is not available.')
     return { error: 'search_page is not available.' }

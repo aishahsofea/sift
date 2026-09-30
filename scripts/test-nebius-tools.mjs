@@ -21,6 +21,9 @@
 //   - it then quotes what it found, and the quote verifies against the whole page
 //   - it does not search when the question is about the part it was given
 //   - the prefix caching ADR 0001 measured still holds on a cut page across rounds
+// And escalation past a thin search snippet (#7): the model reaches for fetch_page when a
+// snippet isn't enough, and, when that fetched page is itself too long, reaches for
+// search_page to get past its own cut — without cite_page trying to check either one.
 // Both search tools are stubbed against a fictional site (loomkit.example), so
 // every expected answer is only knowable from the page or a stubbed tool result,
 // never from the model's own knowledge. No Tavily calls are made.
@@ -39,6 +42,10 @@ const REQUEST_TIMEOUT_MS = 180_000;
 // Round cap from the agent design: once the model has used tools this many
 // rounds, the next call is forced to answer.
 const MAX_TOOL_ROUNDS = 3;
+// Mirrors FETCHED_PAGE_CHAR_LIMIT in src/shared/constants.ts: how much of a fetch_page
+// result the tool result itself carries before it is cut and the rest left for
+// search_page to reach (#7).
+const FETCH_PAGE_CHAR_LIMIT = 20_000;
 
 const apiKey = process.env.NEBIUS_API_KEY;
 if (!apiKey) {
@@ -123,7 +130,7 @@ const SEARCH_PAGE_TOOL = {
   function: {
     name: "search_page",
     description:
-      "Search the whole page, including the part that is cut off from the page content. Returns the passages that best match your words, each with the character offset it starts at. Use it when the question is about a part of the page that isn't in the page content.",
+      "Search the whole page, including the part that is cut off from the page content, or the text of a page you fetched with fetch_page if that came back cut off too. Returns the passages that best match your words, each with the character offset it starts at. Use it when the question is about a part that isn't in what you were given.",
     parameters: {
       type: "object",
       properties: {
@@ -316,6 +323,31 @@ const PRICE = /17\.50/;
 const MADE_UP_PRICE = /\$\s?\d/;
 const PRICE_QUESTION = "How much does the Loomkit Pro plan cost?";
 
+// A page reached only via fetch_page, padded past FETCH_PAGE_CHAR_LIMIT so fetch_page
+// itself cuts it (#7): the snippet names the topic but not the number, and the number
+// is past where the fetch's own cut falls, so only fetch_page, then search_page on what
+// it returned, can reach it — the same shape as CUT_PAGE, one tool over.
+const PRUNING_URL = "https://loomkit.example/help/board-pruning";
+const PRUNING_HEAD = "How Loomkit prunes inactive boards\n\nBoards that stop getting used are archived automatically.\n";
+const PRUNING_TAIL = "\nA board is pruned once its inactivity score passes a threshold of 0.87.";
+const BIG_PRUNING_PAGE = padCut({ content: PRUNING_HEAD, full: PRUNING_HEAD + PRUNING_TAIL }, FETCH_PAGE_CHAR_LIMIT + 4_000);
+const PRUNING_SNIPPET = "An overview of how Loomkit decides a board has gone stale and archives it.";
+const PRUNING_SCORE = /0\.87/;
+
+// #7's shape on the fictional site: the search snippet half-answers the question (it names
+// the mechanism, not the score), so answering from it is tempting, and the page has the rest.
+// Measured 2026-09-28, 12 runs each: the model read the page 5 times and answered from the
+// snippet 7 times, on the earlier SEARCH_NOTE and on the reworded one alike. The rewording
+// moves something else, whether a snippet that lacks the answer gets the page read (ADR 0009).
+// No snippet-based answer asserted anything only the page says.
+const PARTIAL_URL = "https://loomkit.example/help/board-archiving";
+const PARTIAL_SNIPPET = "Loomkit automatically archives boards that have gone inactive. Archiving is based on how recently a board was edited.";
+const PARTIAL_PAGE = [
+  "How Loomkit archives inactive boards",
+  "",
+  "Every night Loomkit scores each board from 0 to 1 using its edits, comments and views from the last 30 days. Boards that score below 0.87 are archived, and members are notified 3 days before.",
+].join("\n");
+
 // Canned search_site results.
 const RESULTS = {
   pricing: [{ title: "Pricing | Loomkit", url: PRICING_URL, content: PRICING_TEXT }],
@@ -348,10 +380,13 @@ const RESULTS = {
   ],
 };
 
-// fetch_page contents: each result's snippet, except the full pricing page.
+// fetch_page contents: each result's snippet, except the full pricing page and the
+// pruning help page (too long for its own snippet either way).
 const FULL_PAGES = {
   ...Object.fromEntries(Object.values(RESULTS).flat().map((r) => [r.url, r.content])),
   [PRICING_URL]: PRICING_TEXT,
+  [PRUNING_URL]: BIG_PRUNING_PAGE.full,
+  [PARTIAL_URL]: PARTIAL_PAGE,
 };
 
 // ---------------------------------------------------------------------------
@@ -386,6 +421,20 @@ const PAGE_SEARCH_NOTE =
   "These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.";
 const PAGE_SEARCH_EMPTY_NOTE =
   "Nothing on the page matches those words. Search again with different words, or answer from what you have.";
+// search_page's notes when it searched a fetched page's cut-off text instead of the page
+// the user is viewing (#7): not citable, so the shape is SEARCH_NOTE/FETCH_NOTE's, not
+// PAGE_SEARCH_NOTE's. Mirror PAGE_SEARCH_NOTE_FETCHED / PAGE_SEARCH_EMPTY_NOTE_FETCHED.
+const PAGE_SEARCH_NOTE_FETCHED =
+  "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words.";
+const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
+  "Nothing in the fetched page matches those words. Search again with different words, or answer from what you have.";
+// FETCH_NOTE's cut counterpart (#7), shown whether or not cite_page is on offer: the
+// only place the model learns a fetch was incomplete and search_page can reach the rest.
+// Mirror FETCH_NOTE_CUT in src/background/nebius/tools.ts.
+function FETCH_NOTE_CUT(charsOmitted) {
+  const omitted = charsOmitted.toLocaleString("en-US");
+  return `This is the fetched page, not the page content the user is viewing, so cite_page can't check it either way. It is cut off too: its last ${omitted} characters are not included. If it doesn't have the answer, call search_page with words from the missing part to reach it.`;
+}
 
 // Checks every quote against the page. `injectRejection` fails the whole call
 // regardless, to see how the model reacts to an error it can't have caused.
@@ -866,6 +915,49 @@ const CASES = [
     },
   },
   {
+    // #7: the fetched page is itself too long, so fetch_page's own result comes back
+    // cut. Only search_page, on what fetch_page returned, can reach the number past it.
+    id: "fetch:cut",
+    title: "fetch_page result itself comes back cut: search_page reaches past its own cut",
+    question: "How does Loomkit decide when to prune an inactive board?",
+    search: () => [{ title: "Board pruning", url: PRUNING_URL, content: PRUNING_SNIPPET }],
+    check(run, c) {
+      const { fetchedUrls, allowedUrls, fetchedFullContent } = run.state;
+      const fetched = fetchedUrls.some((url) => allowedUrls.has(url));
+      c.must(fetched, "called fetch_page for the help page", `answer: ${preview(run.answer)}`);
+      c.must(
+        fetchedFullContent !== undefined,
+        "the fetch came back cut, so the rest was kept for search_page",
+        "fetch_page result was not cut: make BIG_PRUNING_PAGE longer than FETCH_PAGE_CHAR_LIMIT",
+      );
+      const searchedFetch = run.rounds.some((r) => r.toolCalls.some((tc) => tc.name === "search_page"));
+      c.should(
+        searchedFetch,
+        "called search_page to reach past the fetch's own cut",
+        `tools called: ${run.rounds.flatMap((r) => r.toolCalls.map((tc) => tc.name)).join(", ")}`,
+      );
+      c.must(PRUNING_SCORE.test(run.answer), "final answer has the number only reachable past the fetch's own cut (0.87)", preview(run.answer));
+    },
+  },
+  {
+    // A measurement of an open behaviour, not a gate: the model answers from a snippet that
+    // half-answers the question about half the time (#7), which no wording tried so far has
+    // changed. Opt-in, so a default run is not half WARN; run it with --only=snippet:partial.
+    id: "snippet:partial",
+    title: "Snippet half-answers the question: does the model read the page, or answer from the summary?",
+    question: "How does Loomkit decide which inactive boards to archive?",
+    optIn: true,
+    search: () => [{ title: "Board archiving | Loomkit", url: PARTIAL_URL, content: PARTIAL_SNIPPET }],
+    check(run, c) {
+      const { fetchedUrls, allowedUrls } = run.state;
+      const fetched = fetchedUrls.some((url) => allowedUrls.has(url));
+      c.should(fetched, "read the page instead of answering from the snippet", `answered from the snippet: ${preview(run.answer)}`);
+      // Only the page says these: an answer that has them without reading it made them up.
+      const pageOnly = /comment|views?\b|30 days|0\.87|3 days/i.test(run.answer);
+      c.should(fetched || !pageOnly, "without reading, asserts nothing only the page states", preview(run.answer));
+    },
+  },
+  {
     id: "stream",
     title: "Same loop, streamed: tool-call arguments joined from deltas",
     question: PRICE_QUESTION,
@@ -959,6 +1051,7 @@ async function runLoop(model, testCase) {
     askedToQuote: false,
     discardedAnswer: null,
     forcedRetried: false,
+    fetchedFullContent: undefined,
   };
   const rounds = [];
   const maxToolRounds = testCase.maxToolRounds ?? MAX_TOOL_ROUNDS;
@@ -975,9 +1068,13 @@ async function runLoop(model, testCase) {
 
   for (let round = 1; ; round++) {
     const forced = toolRounds >= maxToolRounds;
+    // Mirrors agentLoop.ts's roundTools: search_page comes onto the table for the rest
+    // of the turn once a fetch_page result comes back cut (#7), even where isCut(testCase)
+    // is false, without touching toolsFor()'s own cite_page cut/whole choice.
+    const roundTools = isCut(testCase) || state.fetchedFullContent === undefined ? tools : [...tools, SEARCH_PAGE_TOOL];
     let call;
     if (forced) {
-      call = FORCE_STRATEGIES[forceStrategy](messages, tools);
+      call = FORCE_STRATEGIES[forceStrategy](messages, roundTools);
       if (forcedRetried) call = { ...call, messages: [...call.messages, { role: "user", content: FORCE_RETRY }] };
     }
     // skipFirstRound: round 1 gets the pre-cite_page prompt and tools, so the model
@@ -988,7 +1085,7 @@ async function runLoop(model, testCase) {
       const baseline = [{ role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: false, pageSearch: false }) }, ...messages.slice(1)];
       call = { messages: baseline, params: testCase.noSearch ? {} : { tools: SEARCH_TOOLS } };
     }
-    else call = { messages: quoteNudge ? [...messages, quoteNudge] : messages, params: tools.length ? { tools } : {} };
+    else call = { messages: quoteNudge ? [...messages, quoteNudge] : messages, params: roundTools.length ? { tools: roundTools } : {} };
     quoteNudge = null;
     let result;
     try {
@@ -1047,7 +1144,16 @@ async function runLoop(model, testCase) {
 
 function runTool(testCase, state, tc, round) {
   if (tc.name === "search_page") {
-    // Mirrors searchCutPage: refused where it wasn't offered, otherwise a local search of the cut-off part.
+    // Mirrors searchWholePage: a cut fetch takes priority over the tab page (#7), since
+    // it's the most recent thing the model asked to read; otherwise refused where the
+    // tab page wasn't offered, or a local search of its cut-off part.
+    if (state.fetchedFullContent !== undefined) {
+      const passages = searchPageStub({ content: state.fetchedFullContent.slice(0, FETCH_PAGE_CHAR_LIMIT), full: state.fetchedFullContent }, tc.args.query);
+      state.pageSearches++;
+      state.pagePassages += passages.length;
+      state.pageQueries.push(tc.args.query);
+      return { passages, note: passages.length ? PAGE_SEARCH_NOTE_FETCHED : PAGE_SEARCH_EMPTY_NOTE_FETCHED };
+    }
     if (!isCut(testCase)) return { error: "search_page is not available." };
     const passages = searchPageStub(testCase.page, tc.args.query);
     state.pageSearches++;
@@ -1079,7 +1185,13 @@ function runTool(testCase, state, tc, round) {
     state.inventedUrls.push(tc.args.url);
     return { error: "fetch_page only accepts URLs returned by search_site." };
   }
-  return withWebNote({ url: tc.args.url, content: FULL_PAGES[tc.args.url] ?? "" }, "fetch");
+  // Mirrors runTool's fetch_page branch: cut at the same limit the real handler caps a
+  // fetch at, the rest kept for search_page to reach (#7).
+  const full = FULL_PAGES[tc.args.url] ?? "";
+  const cut = full.length > FETCH_PAGE_CHAR_LIMIT;
+  if (cut) state.fetchedFullContent = full;
+  const content = cut ? full.slice(0, FETCH_PAGE_CHAR_LIMIT) : full;
+  return withWebNote({ url: tc.args.url, content }, "fetch", cut ? full.length - FETCH_PAGE_CHAR_LIMIT : 0);
 }
 
 // Mirrors src/background/nebius/promptAssembly.ts: `search` is whether Tavily is configured,
@@ -1092,13 +1204,15 @@ function runTool(testCase, state, tc, round) {
 // reads last. The system prompt said the same and was ignored: after a search the
 // model cited the snippet ("it matches the page"), which is rejected, and the wasted
 // rounds ran into the round cap. Mirrors SEARCH_NOTE / FETCH_NOTE in
-// src/background/nebius/tools.ts.
-function withWebNote(output, kind) {
+// src/background/nebius/tools.ts. `charsOmitted` is only ever set on a cut fetch (#7);
+// that note is shown regardless of citeEnabled, unlike the other two.
+function withWebNote(output, kind, charsOmitted = 0) {
+  if (kind === "fetch" && charsOmitted) return { ...output, note: FETCH_NOTE_CUT(charsOmitted) };
   if (!citeEnabled) return output;
   const note =
     kind === "fetch"
       ? "This is the full text of a fetched page, not the page content the user is viewing, so cite_page can't check it. Answer from it now."
-      : "These are search results, not the page content, so cite_page can't check them. Answer from them now, or search again.";
+      : "These are search results, not the page content, so cite_page can't check them. If a snippet has the answer, use it now. If none does, call fetch_page with that result's URL to read it in full, or search again with a better query.";
   return { ...output, note };
 }
 
@@ -1107,7 +1221,7 @@ function systemPrompt(page, { search, cite, pageSearch = false }) {
   const intro = `You answer questions about the web page the user is viewing on ${site}.`;
   const quoteThenAnswer =
     "first call cite_page with up to three short passages (a sentence or less each) that support your answer, copied word for word, then answer from them.";
-  const searchTheSite = `call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. Then answer from the results.`;
+  const searchTheSite = `call search_site to search ${site}, and search again with a better query if the results don't help. If a result's snippet isn't enough, call fetch_page with that result's URL. If that page comes back cut off too, call search_page to reach the rest of it. Then answer from the results.`;
   let instructions;
   if (pageSearch) {
     // A page cut short in the prompt whose rest search_page can reach (ADR 0006).
@@ -1138,7 +1252,7 @@ function systemPrompt(page, { search, cite, pageSearch = false }) {
       ...(search
         ? [
             `If it doesn't (or only covers part of it), call search_site to search ${site}. If the results don't help, search again with a better query.`,
-            "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full.",
+            "If a result's snippet isn't enough, call fetch_page with that result's URL to read the page in full. If that page comes back cut off too, call search_page to reach the rest of it.",
           ]
         : ["You have no search available, so if the page doesn't cover the question, say so."]),
     ];
