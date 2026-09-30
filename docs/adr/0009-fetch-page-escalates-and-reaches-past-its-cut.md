@@ -290,6 +290,25 @@ ADR 0004's allowlist: still zero real `fetch_page` calls, this session included.
 number in this ADR before today came from the eval harness or the spike, never the actual
 extension.
 
+### Contamination probe (2026-09-30)
+
+Filed as [#30](https://github.com/aishahsofea/sift/issues/30): run 2 above can't tell
+"Tavily's snippet was unexpectedly rich" apart from "the model already knows this real,
+public paper from pretraining." New file,
+[`methodsPaperKnowledgeProbe.eval.ts`](../../src/eval/methodsPaperKnowledgeProbe.eval.ts),
+asks the exact Appendix F threshold question with **no retrieval path at all** — an
+unrelated fictional page, no `tavilyApiKey`, no `searchResults`/`extractResult`/
+`fullContent`, so `search_site`/`fetch_page`/`search_page` are never even offered
+(`cite_page` stays offered but can't smuggle in real page text past ADR 0005's quote
+check). Any correct threshold in the answer can only come from what the model already
+knew.
+
+Three runs, `EVAL_REPEATS=3`, live: 0/3 thresholds landed in every run, each answer a
+plain "I don't have that content" refusal. The model does **not** know the Appendix F
+thresholds unaided — run 2's real fact came from retrieval (the richer-than-assumed
+Tavily snippet), not pretraining. Clean result: the existing fetch-escalation numbers
+above stand uncaveated.
+
 ### Not run
 
 - Real Tavily extraction. The eval feeds Readability text for the methods paper through a
@@ -313,9 +332,12 @@ extension.
   open on #7); how `search_page` over a fetched page should pick its passages, and whether
   a miss should get a retry ([#27](https://github.com/aishahsofea/sift/issues/27)); the
   missing request timeout on Nebius calls
-  ([#28](https://github.com/aishahsofea/sift/issues/28)); and whether this eval's own
-  fixture lets a pass come from model knowledge instead of retrieval
-  ([#30](https://github.com/aishahsofea/sift/issues/30)). The numbers above are the
+  ([#28](https://github.com/aishahsofea/sift/issues/28)). The numbers above are the
   starting point for each.
+- [#30](https://github.com/aishahsofea/sift/issues/30) (closed): the contamination probe
+  (see "Contamination probe" under Verification) came back clean — the model can't state
+  the Appendix F thresholds with no retrieval path, so a pass on this eval's real-paper
+  fixture is retrieval, not pretraining. The fetch-escalation counts above stand
+  uncaveated.
 - Don't run several eval processes at once against one key: Nebius answers with a 4xx, and
   the client reports it as a key error (17 of the 60 runs in the A/B above).
