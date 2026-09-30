@@ -42,3 +42,9 @@ export const PAGE_SEARCH_MAX_PASSAGES = 4
 export const PAGE_SEARCH_CUT_PASSAGES = 2
 
 export const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1'
+
+// Aborts a chat-completions stream that has gone silent for this long — reset on every
+// chunk, not a cap on the request's total duration, which would kill a legitimately
+// long-streaming answer. No per-chunk cadence data was available to tune this precisely:
+// a starting point, worth revisiting with real numbers (#28).
+export const NEBIUS_STREAM_IDLE_TIMEOUT_MS = 30_000
