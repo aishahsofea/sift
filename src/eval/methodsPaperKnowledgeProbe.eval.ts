@@ -3,9 +3,8 @@ import { getRepeatCount, printSummary, recordRun, runCase, stepKindsOf } from '.
 import { page } from './fixtures/fictionalProductPage'
 import { assertFixtureIntegrity, EDGE_THRESHOLD_RE, LOGIT_THRESHOLD_RE, METHODS_URL, NODE_THRESHOLD_RE } from './fixtures/transformerCircuitsMethods'
 
-// Real runAgentLoop, same three seams agentLoop.test.ts/fetchPageEscalation.eval.ts mock.
-// This file never exercises Tavily (no case here has a tavilyApiKey), but hoisting is
-// per-file (ADR 0007's decision section), so the mocks are redeclared anyway.
+// Real runAgentLoop, same mocks as fetchPageEscalation.eval.ts. This probe never calls
+// Tavily, but vi.mock hoists per-file, so they're redeclared anyway.
 vi.mock('../background/history/sessionHistory', () => ({
   getExtractedPage: vi.fn(),
   getFullPageContent: vi.fn(),
@@ -19,31 +18,26 @@ afterAll(() => {
   printSummary()
 })
 
-// Fails fast, with no API call, if a regressed fixture no longer has the real Appendix F
-// thresholds past FETCHED_PAGE_CHAR_LIMIT — same check fetchPageEscalation.eval.ts runs,
-// against the fixture this probe's question and grading both depend on.
+// Fails fast, no API call, if the fixture loses its real Appendix F thresholds past
+// FETCHED_PAGE_CHAR_LIMIT — same check as fetchPageEscalation.eval.ts.
 describe('fixture integrity', () => {
   it('still has the real Appendix F thresholds past FETCHED_PAGE_CHAR_LIMIT', () => {
     expect(() => assertFixtureIntegrity()).not.toThrow()
   })
 })
 
-// #30: fetchPageEscalation.eval.ts's fixture is a real, public paper, so a run that lands on
-// the right thresholds without ever calling fetch_page/search_page can't be told apart from
-// "the model already knew this well-known paper" — ADR 0007 required a fictional fixture for
-// exactly this reason, and this eval doesn't have one. Names the paper/URL directly rather
-// than "companion paper" (that framing depends on page context this case withholds).
+// #30: fetchPageEscalation.eval.ts uses a real, public paper, so a correct answer with no
+// fetch_page/search_page call could just mean the model already knew it. ADR 0007 fixed this
+// with a fictional fixture; this probe asks about the paper by name/URL instead (not
+// "companion paper", which needs page context this case deliberately withholds).
 const probeQuestion = `What exact thresholds does the paper at ${METHODS_URL} use when pruning nodes and edges from an attribution graph, per its Appendix F?`
 
-// Diagnostic, not a gate: there is no known-correct expected outcome to assert here, only a
-// question worth answering by reading the runs (ADR 0007: "read the misses, not the count").
-// The fictional product page carries nothing about attribution graphs, and no tavilyApiKey/
-// searchResults/extractResult/fullContent means search_site and fetch_page/search_page are
-// never even offered (agentLoop.ts: searchEnabled/pageSearchEnabled both require them) — the
-// model has no path to transformer-circuits.pub at all, so any correct threshold in its
-// answer can only come from what it already knew. cite_page stays on offer, but ADR 0005's
-// quote verification rejects any "quote" not actually found in the given page's text, so it
-// gives the model no way to smuggle in real methods.html content either.
+// Diagnostic, not a gate: no expected outcome to assert, just runs worth reading by hand
+// (ADR 0007: "read the misses, not the count"). The fictional product page says nothing
+// about attribution graphs, and omitting tavilyApiKey/searchResults/extractResult/fullContent
+// means search_site/fetch_page/search_page are never even offered — the model has no path to
+// the real page at all. cite_page stays offered, but ADR 0005's quote check rejects any quote
+// not actually in the given page, so it can't smuggle in real content either.
 describe('contamination probe: does the model know the thresholds with no retrieval path (#30)', () => {
   for (let i = 0; i < getRepeatCount(); i++) {
     it(`answers with no tool access, run ${i + 1}`, async () => {
