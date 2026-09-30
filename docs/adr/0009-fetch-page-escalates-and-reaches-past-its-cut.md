@@ -7,8 +7,10 @@
   [ADR 0005](0005-grounding-is-verified-not-assumed.md),
   [ADR 0006](0006-long-pages-are-kept-and-searched-locally.md),
   [ADR 0007](0007-grounding-eval-set.md)
-- Built: #7, in part. Still `proposed`: the Chrome click-through has not run, and the
-  issue's own question is not fixed (see "What this does not fix").
+- Built: #7, in part. Still `proposed`: the issue's own question is not fixed (see "What
+  this does not fix"). The Chrome click-through ran 2026-09-30 (see "Chrome click-through"
+  under Verification) — it reconfirmed the gap rather than closing it, and surfaced a new
+  one, filed as [#30](https://github.com/aishahsofea/sift/issues/30).
 
 ## Context
 
@@ -248,11 +250,48 @@ numbers were discarded. It also showed that a stalled Nebius request hangs for 1
 because production has no timeout on those calls (flagged as its own task). The eval bounds
 its requests at 90 s and reports stalls apart from misses.
 
+### Chrome click-through (2026-09-30)
+
+Real extension, unpacked, real Chrome. The automation (Claude in Chrome) couldn't reach
+`chrome://extensions` or a `chrome-extension://` URL directly — it forces an `https://`
+scheme onto any URL, so both come back mangled (`https://chrome-extension//...`). Worked
+around it by opening the side panel's own page as a plain tab,
+`chrome-extension://<id>/src/sidepanel/index.html?tabId=<id>`, the same `?tabId=` scoping
+[background/index.ts:24](../../src/background/index.ts#L24) itself uses — a real
+`chrome.runtime.connect` session, not the no-unpacked-extension harness (that harness stubs
+`chrome.runtime.sendMessage` and doesn't cover this path). The click itself (open the
+biology page, click Sift's toolbar icon) needed a human; everything after ran normally.
+
+Three runs, human-executed, live:
+
+| # | query asked | tool path | thresholds | label |
+|---|---|---|---|---|
+| 1 | issue's exact wording | `search_page` (tab page, "prune") — no `search_site`, no `fetch_page` | 0/3 | unverified |
+| 2 | "graph pruning" | `search_site` only | 0/3, one real fact recovered anyway (below) | web |
+| 3 | "prune attribution graph" | `search_site` only | 0/3 | unverified |
+
+0/3 read the page (`Reading …` never appeared; run 3 watched specifically for it).
+Matches the 2/34 rate already logged above for the verbatim case — not a surprise alone.
+
+Run 2 is the interesting one. Its answer correctly stated that pruning "reduce[s] the
+number of nodes by an order of magnitude while reducing completeness by only 20%." Checked
+against the real fixture (`src/eval/fixtures/transformerCircuitsMethods.txt`): genuine,
+found at character offset 34,128 and again at 148,676 — past both the 20K `fetch_page`
+head-cut and, by the step list, anything `search_page` touched, since neither tool ran.
+Two readings, can't tell which from what's available: `search_site`'s Tavily snippet for
+that query was richer than the "thin snippet" this ADR assumed throughout, or the model
+already knows this real, public paper from pretraining and didn't need to read anything.
+No network capture from that run to settle it — filed as
+[#30](https://github.com/aishahsofea/sift/issues/30) rather than guessed at here, since it
+questions this eval fixture's validity as a grounding test (ADR 0007 used a *fictional*
+site for the #3 eval for exactly this reason).
+
+ADR 0004's allowlist: still zero real `fetch_page` calls, this session included. Every
+number in this ADR before today came from the eval harness or the spike, never the actual
+extension.
+
 ### Not run
 
-- The Chrome click-through, which this issue's own "Done when" asks for and which the
-  allowlist's ("ADR 0004 exercised in Chrome") depends on: Claude in Chrome was not
-  connected in this session.
 - Real Tavily extraction. The eval feeds Readability text for the methods paper through a
   mocked `extractTavily`; Tavily has its own extraction, and nothing here has fetched its
   `raw_content` for that URL, so its length and shape, and so where the cut falls, are
@@ -272,9 +311,11 @@ its requests at 90 s and reports stalls apart from misses.
   fails `spikeParity.test.ts`.
 - Open, and not decided here: the tab page "covering" a question it half-answers (still
   open on #7); how `search_page` over a fetched page should pick its passages, and whether
-  a miss should get a retry ([#27](https://github.com/aishahsofea/sift/issues/27)); and the
+  a miss should get a retry ([#27](https://github.com/aishahsofea/sift/issues/27)); the
   missing request timeout on Nebius calls
-  ([#28](https://github.com/aishahsofea/sift/issues/28)). The numbers above are the
+  ([#28](https://github.com/aishahsofea/sift/issues/28)); and whether this eval's own
+  fixture lets a pass come from model knowledge instead of retrieval
+  ([#30](https://github.com/aishahsofea/sift/issues/30)). The numbers above are the
   starting point for each.
 - Don't run several eval processes at once against one key: Nebius answers with a 4xx, and
   the client reports it as a key error (17 of the 60 runs in the A/B above).
