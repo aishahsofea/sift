@@ -102,6 +102,8 @@ loop — the model decides when to search; see
 - Nebius chat responses may return reasoning/chain-of-thought under
   `message.reasoning` instead of the OpenAI-style `message.reasoning_content`,
   depending on model/wrapper — check both fields.
+- Keep comments concise and human readable. Explain the non-obvious why, not
+  the what; trim run-on multi-line comments down to the point.
 
 ## Issues
 
