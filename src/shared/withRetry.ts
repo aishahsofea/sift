@@ -11,6 +11,9 @@ async function attempt(url: string, init: RequestInit, isRetry: boolean): Promis
   try {
     res = await fetch(url, init)
   } catch (error) {
+    // A caller's own cancellation is not a transient failure — retrying it would
+    // silently double however long the caller was already waiting to give up.
+    if (init.signal?.aborted) throw error
     if (isRetry) throw error
     return attempt(url, init, true)
   }
