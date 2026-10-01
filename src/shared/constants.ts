@@ -45,6 +45,10 @@ export const PAGE_SEARCH_MAX_PASSAGES = 4
 // reliably find things in a 40,000-token head either; without this, a head that says the
 // word more often than the section past the cut would fill every slot and hide it.
 export const PAGE_SEARCH_CUT_PASSAGES = 2
+// A cut fetch_page result already has its head in the model's context, so its search
+// skips the head and spends every slot past the cut (#27). Six passages are about 9,000
+// characters, still under FETCHED_PAGE_CHAR_LIMIT.
+export const PAGE_SEARCH_FETCH_PASSAGES = 6
 
 export const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1'
 

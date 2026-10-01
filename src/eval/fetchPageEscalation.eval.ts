@@ -47,12 +47,17 @@ beforeAll(() => {
 // What each stage of the chain did, over the runs that were not endpoint stalls: the
 // numbers ADR 0009 reports, printed here so a run states them without anyone re-reading
 // the per-run lines.
-const chain = { runs: 0, searchedSite: 0, readPage: 0, searchedAfterReading: 0, thresholds3: 0, searchedWithRoundLeft: 0, readGivenSearch: 0 }
+const chain = { runs: 0, searchedSite: 0, readPage: 0, searchedAfterReading: 0, thresholds3: 0, landedAfterScan: 0, searchedWithRoundLeft: 0, readGivenSearch: 0 }
 
 // The floor on reading the page after a search, and how many runs must have searched with a
 // round left before it is checked. See the comment on the describe below.
 const READ_FLOOR = 0.5
 const MIN_OPPORTUNITIES = 6
+// Of the runs that searched the fetched page after reading it, how many reach all three
+// thresholds (#27: 4 of 8 live with past-the-cut search and six passages, from 4 of 35 overall
+// before). A floor far under that, there for the search regressing, not for the difference
+// a query makes; the expects stay off because the model often never gets as far as searching.
+const THRESHOLD_FLOOR = 0.25
 
 afterAll(() => {
   globalThis.fetch = realFetch
@@ -141,8 +146,10 @@ describe('fetch_page escalates past a thin snippet, then past its own cut (#7)',
         chain.runs++
         if (firstSearch !== -1) chain.searchedSite++
         if (read !== -1) chain.readPage++
-        if (read !== -1 && stepKinds.indexOf('scanning', read) !== -1) chain.searchedAfterReading++
+        const scannedAfterReading = read !== -1 && stepKinds.indexOf('scanning', read) !== -1
+        if (scannedAfterReading) chain.searchedAfterReading++
         if (landed === 3) chain.thresholds3++
+        if (landed === 3 && scannedAfterReading) chain.landedAfterScan++
         console.log(`[eval] fetch-escalation run ${i + 1}: ${elapsedMs}ms, steps ${steps}, thresholds in answer ${landed}/3, label ${turn?.source}, answer ${JSON.stringify(content.slice(0, 400))}`)
 
         expect(error, error).toBeUndefined()
@@ -166,6 +173,15 @@ describe('fetch_page escalates past a thin snippet, then past its own cut (#7)',
       return
     }
     expect(k / n, `read the page in ${k} of ${n} runs that searched with a round left`).toBeGreaterThanOrEqual(READ_FLOOR)
+  })
+
+  it('reaches all three thresholds in a share of the runs that searched the fetched page', () => {
+    const { searchedAfterReading: n, landedAfterScan: k } = chain
+    if (n < MIN_OPPORTUNITIES) {
+      console.warn(`[eval] threshold floor not checked: ${n} runs searched after reading, it needs ${MIN_OPPORTUNITIES}`)
+      return
+    }
+    expect(k / n, `all three thresholds in ${k} of ${n} runs that searched after reading`).toBeGreaterThanOrEqual(THRESHOLD_FLOOR)
   })
 })
 

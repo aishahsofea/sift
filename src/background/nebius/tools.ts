@@ -188,7 +188,7 @@ export const PAGE_SEARCH_EMPTY_NOTE =
 export const PAGE_SEARCH_NOTE_FETCHED =
   "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words."
 export const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
-  'Nothing in the fetched page matches those words. Search again with different words, or answer from what you have.'
+  'Nothing past the start of the fetched page matches those words. Search again with different words, or answer from what you have.'
 
 interface ToolAvailability {
   /** A Tavily key is configured, so search_site and fetch_page can run. */
