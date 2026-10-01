@@ -20,7 +20,14 @@ vi.mock('../background/history/sessionHistory', () => ({
   getHistory: vi.fn(),
   appendHistoryTurns: vi.fn(),
 }))
-vi.mock('../background/keys', () => ({ getApiKeys: vi.fn() }))
+vi.mock('../background/history/agentTraces', () => ({
+  getTraces: vi.fn(),
+  appendTrace: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../background/keys', () => ({
+  getApiKeys: vi.fn(),
+  getTraceContentEnabled: vi.fn().mockResolvedValue(false),
+}))
 vi.mock('../background/tavily/client', () => ({
   searchTavily: vi.fn(() => {
     throw new Error('searchTavily must never be called in truncatedTailGrounding.eval.ts: no case here has a Tavily key.')

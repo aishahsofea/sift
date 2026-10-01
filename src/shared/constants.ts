@@ -8,6 +8,11 @@ export const BYLINE_CHAR_LIMIT = 1_000
 // 20 turns = 10 user/assistant pairs of prior context sent with each new question.
 export const MAX_HISTORY_TURNS = 20
 
+// Tighter than MAX_HISTORY_TURNS: a run can have more rounds carrying more text per round
+// once the trace content toggle is on, so a smaller bound keeps the shared 10 MB
+// chrome.storage.session quota comfortable (#18).
+export const MAX_TRACE_RUNS = 15
+
 // Tool rounds the model gets before the loop forces an answer (ADR 0001).
 // Round MAX_TOOL_ROUNDS + 1 drops the tools and nudges (ADR 0003). A cite_page
 // round counts against this like any other (ADR 0005).

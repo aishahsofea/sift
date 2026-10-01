@@ -33,5 +33,6 @@ export type AskPortMessage =
   | { type: 'ASK_STEP'; step: AgentStep }
   | { type: 'ASK_CHUNK'; delta: string }
   // The assistant turn exactly as stored in history, so a live answer and a reloaded one match.
-  | { type: 'ASK_DONE'; turn: ChatTurn }
-  | { type: 'ASK_ERROR'; message: string }
+  // traceId ties each outcome to its AgentTrace (#18).
+  | { type: 'ASK_DONE'; turn: ChatTurn; traceId: string }
+  | { type: 'ASK_ERROR'; message: string; traceId: string }

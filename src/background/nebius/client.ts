@@ -1,4 +1,5 @@
 import { NEBIUS_BASE_URL, NEBIUS_STREAM_IDLE_TIMEOUT_MS } from '../../shared/constants'
+import type { AgentTraceTiming, TokenUsage } from '../../shared/types'
 import { withRetry } from '../../shared/withRetry'
 import { resolveNemotronModel } from './modelDiscovery'
 import type { ChatMessage } from './promptAssembly'
@@ -9,6 +10,16 @@ export interface AgentTurn {
   content: string
   /** Unvalidated: names and arguments are whatever the model sent. */
   toolCalls: RawToolCall[]
+  // The five fields below are all optional, including `model`, so the existing scripted
+  // `{content, toolCalls}` turns in agentLoop.test.ts keep typechecking unchanged (#18).
+  /** resolveNemotronModel's pick for this round. */
+  model?: string
+  /** Absent when Nebius doesn't report usage for this round — never zeroed. */
+  usage?: TokenUsage
+  finishReason?: string
+  /** Chain-of-thought text, captured for the trace only — never passed to onContent. */
+  reasoning?: string
+  timing?: AgentTraceTiming
 }
 
 interface StreamAgentTurnOptions {
@@ -26,6 +37,9 @@ export async function streamAgentTurn(
   messages: ChatMessage[],
   { tools, onContent }: StreamAgentTurnOptions,
 ): Promise<AgentTurn> {
+  // Marks this round's start for `timing` below — before model resolution and the POST,
+  // both of which are real, attributable latency on a cold service worker.
+  const startedAt = Date.now()
   const model = await resolveNemotronModel(apiKey)
 
   // Aborts on silence, not on total duration (#28): a stall during connect or between
@@ -50,7 +64,13 @@ export async function streamAgentTurn(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model, messages, stream: true, ...(tools ? { tools } : {}) }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        stream_options: { include_usage: true },
+        ...(tools ? { tools } : {}),
+      }),
       signal: controller.signal,
     })
     armIdleTimer()
@@ -60,7 +80,14 @@ export async function streamAgentTurn(
       throw new Error(`POST /chat/completions (stream) failed: ${res.status} ${text}`)
     }
 
+    let firstByteAt: number | undefined
     let content = ''
+    // Nemotron streams chain-of-thought under `reasoning`; other OpenAI-compatible
+    // wrappers use `reasoning_content` (AGENTS.md: check both). Buffered for the trace
+    // only — never passed to onContent, so it never reaches the panel or history.
+    let reasoning = ''
+    let usage: TokenUsage | undefined
+    let finishReason: string | undefined
     // Tool calls stream as fragments keyed by index: id and name arrive first, then
     // the arguments JSON in pieces that only parse once joined (3 fragments on Nano).
     const calls: { id: string; name: string; argsText: string }[] = []
@@ -73,9 +100,18 @@ export async function streamAgentTurn(
 
       let chunk: {
         error?: unknown
+        usage?: {
+          prompt_tokens?: number
+          completion_tokens?: number
+          total_tokens?: number
+          prompt_tokens_details?: { cached_tokens?: number }
+        }
         choices?: {
+          finish_reason?: string
           delta?: {
             content?: string
+            reasoning?: string
+            reasoning_content?: string
             tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[]
           }
         }[]
@@ -87,11 +123,26 @@ export async function streamAgentTurn(
       }
       if (chunk.error) throw new Error(`Nebius stream error: ${JSON.stringify(chunk.error)}`)
 
-      const delta = chunk.choices?.[0]?.delta
+      // stream_options.include_usage's terminal chunk carries usage with choices: [] — read
+      // it here, ahead of the `!delta` guard below, or it's never seen.
+      if (chunk.usage) {
+        usage = {
+          promptTokens: chunk.usage.prompt_tokens,
+          completionTokens: chunk.usage.completion_tokens,
+          totalTokens: chunk.usage.total_tokens,
+          cachedTokens: chunk.usage.prompt_tokens_details?.cached_tokens,
+        }
+      }
+
+      const choice = chunk.choices?.[0]
+      if (choice?.finish_reason) finishReason = choice.finish_reason
+
+      const delta = choice?.delta
       if (!delta) return
 
-      // delta.reasoning (not reasoning_content on this wrapper) streams before
-      // delta.content and is deliberately dropped — never render chain-of-thought.
+      const reasoningDelta = delta.reasoning ?? delta.reasoning_content
+      if (reasoningDelta) reasoning += reasoningDelta
+
       if (delta.content) {
         // A tool round still emits one whitespace-only content delta, and a real
         // answer starts with "\n". Swallowing leading whitespace here keeps both out
@@ -99,11 +150,13 @@ export async function streamAgentTurn(
         const emit = content === '' ? delta.content.replace(/^\s+/, '') : delta.content
         if (emit) {
           content += emit
+          firstByteAt ??= Date.now() - startedAt
           onContent(emit)
         }
       }
 
       for (const part of delta.tool_calls ?? []) {
+        firstByteAt ??= Date.now() - startedAt
         const slot = (calls[part.index ?? 0] ??= { id: '', name: '', argsText: '' })
         if (part.id) slot.id = part.id
         if (part.function?.name) slot.name += part.function.name
@@ -129,7 +182,15 @@ export async function streamAgentTurn(
     }
     for (const line of (buffer + decoder.decode()).split('\n')) handleLine(line)
 
-    return { content, toolCalls: calls.filter(Boolean) }
+    return {
+      content,
+      toolCalls: calls.filter(Boolean),
+      model,
+      ...(usage ? { usage } : {}),
+      ...(finishReason ? { finishReason } : {}),
+      ...(reasoning ? { reasoning } : {}),
+      timing: { durationMs: Date.now() - startedAt, ...(firstByteAt !== undefined ? { firstByteMs: firstByteAt } : {}) },
+    }
   } finally {
     clearTimeout(idleTimer)
   }

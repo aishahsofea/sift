@@ -1,9 +1,10 @@
 import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
-import type { AnswerSource, ChatTurn, ExtractedPage } from '../../shared/types'
+import type { AgentTrace, AgentTraceToolCall, ChatTurn, ExtractedPage } from '../../shared/types'
 import { truncate } from '../../shared/truncate'
 import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
-import { getApiKeys } from '../keys'
+import { appendTrace } from '../history/agentTraces'
+import { getApiKeys, getTraceContentEnabled } from '../keys'
 import { streamAgentTurn } from '../nebius/client'
 import { assembleAgentMessages, pageText, type ChatMessage } from '../nebius/promptAssembly'
 import { parseToolCall, type ParsedToolCall } from '../nebius/schema'
@@ -34,6 +35,15 @@ import { extractTavily, searchTavily } from '../tavily/client'
 import { scopeToDomain } from '../tavily/scopeToDomain'
 import { deriveSource } from './answerSource'
 import { searchPage } from './searchPage'
+import {
+  createTraceRecorder,
+  finalizeTrace,
+  fingerprintPrompt,
+  recordRound,
+  summarizeToolCall,
+  type FinalizeOutcome,
+  type TraceRecorder,
+} from './traceRecorder'
 import { collapseWhitespace, verifyQuotes } from './verifyQuotes'
 
 // State the loop carries across rounds, scoped to this one question.
@@ -81,6 +91,7 @@ interface ToolContext {
   /** What a cite_page quote is checked against: the page as the prompt presents it, the whole of it when the text was kept. */
   quotable: string
   state: LoopState
+  recorder: TraceRecorder
 }
 
 export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, question: string): Promise<void> {
@@ -91,18 +102,25 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     panelGone = true
   })
 
+  // Made before the try so every exit, the catch included, can leave a trace (#18).
+  const recorder = createTraceRecorder({ tabId, question, contentEnabled: await readTraceToggle() })
+
   try {
     const { nebiusApiKey, tavilyApiKey } = await getApiKeys()
     if (!nebiusApiKey) {
-      post(port, { type: 'ASK_ERROR', message: 'Add your Nebius API key in Options before asking questions.' })
+      const message = 'Add your Nebius API key in Options before asking questions.'
+      await persistTrace(recorder, { status: 'error' })
+      post(port, { type: 'ASK_ERROR', message, traceId: recorder.id })
       return
     }
 
     const page = await getExtractedPage(tabId)
     if (!page) {
+      await persistTrace(recorder, { status: 'error' })
       post(port, {
         type: 'ASK_ERROR',
         message: 'No page content available yet. Try reopening the side panel on this tab.',
+        traceId: recorder.id,
       })
       return
     }
@@ -140,7 +158,17 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     // A quote is checked against the whole page, not only the part the prompt holds:
     // the model can quote what search_page found there.
     const quotable = pageText(page, fullContent)
-    const context: ToolContext = { port, page, tavilyApiKey, citeEnabled, pageSearchEnabled, fullContent, quotable, state }
+    const context: ToolContext = { port, page, tavilyApiKey, citeEnabled, pageSearchEnabled, fullContent, quotable, state, recorder }
+
+    recorder.page = {
+      length: page.content.length,
+      truncated: page.truncated,
+      charsOmitted: page.charsOmitted,
+      extractionMethod: page.extractionMethod,
+      searchable: Boolean(page.searchable),
+    }
+    recorder.toolsOffered = tools.map((tool) => tool.function.name)
+    Object.assign(recorder, fingerprintPrompt(systemPromptText(messages), page.content, tools))
 
     // Rounds that ran tools. An answer thrown away for want of a quote isn't one, so
     // it doesn't eat into the cap.
@@ -149,7 +177,11 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     let forcedRetried = false
 
     for (;;) {
-      if (panelGone) return
+      if (panelGone) {
+        // No one to post to, but the run still happened.
+        await persistTrace(recorder, { status: 'panel-closed' })
+        return
+      }
       // Past the cap the tools come off and a nudge goes on, for this request only
       // — the nudge is never written to history (ADR 0003). The ask to quote first is
       // the same kind of one-off.
@@ -164,6 +196,12 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
           ? [...messages, quoteNudge]
           : messages
       quoteNudge = undefined
+      // These one-off nudges never reach chat history (ADR 0003), so the trace is the
+      // only place they show.
+      if (forced) {
+        recorder.forcedNudgeSent = true
+        if (forcedRetried) recorder.forcedRetrySent = true
+      }
 
       // search_page comes onto the table for the rest of the turn once a fetch_page
       // result comes back cut (#7), even on a page where pageSearchEnabled was false —
@@ -172,17 +210,33 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       // Already in `tools` when pageSearchEnabled, so it is never added twice.
       const roundTools = pageSearchEnabled || state.fetchedFullContent === undefined ? tools : [...tools, SEARCH_PAGE_TOOL]
 
-      const { content, toolCalls } = await streamAgentTurn(nebiusApiKey, turnMessages, {
+      const roundStart = Date.now()
+      const turn = await streamAgentTurn(nebiusApiKey, turnMessages, {
         tools: forced || !roundTools.length ? undefined : roundTools,
         // An answer that is about to be thrown away is not shown while it is written.
         onContent: (delta) => {
           if (!mustQuoteFirst(context)) post(port, { type: 'ASK_CHUNK', delta })
         },
       })
+      const { content, toolCalls } = turn
+      const record = (extra: { discardedAnswer?: string; toolCalls?: AgentTraceToolCall[] }) =>
+        recordRound(recorder, {
+          index: recorder.rounds.length,
+          model: turn.model ?? 'unknown',
+          usage: turn.usage,
+          finishReason: turn.finishReason,
+          timing: turn.timing ?? { durationMs: Date.now() - roundStart },
+          forced,
+          reasoning: turn.reasoning,
+          toolCalls: extra.toolCalls ?? [],
+          discardedAnswer: extra.discardedAnswer,
+        })
 
       if (!toolCalls.length) {
+        record({ discardedAnswer: mustQuoteFirst(context) ? content : undefined })
         if (mustQuoteFirst(context)) {
           state.askedToQuote = true
+          recorder.askedToQuote = true
           quoteNudge = { role: 'user', content: pageSearchEnabled ? CITE_NUDGE_CUT : CITE_NUDGE }
           post(port, { type: 'ASK_STEP', step: { kind: 'citing' } })
           continue
@@ -192,6 +246,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       }
 
       if (forced) {
+        record({})
         // Nothing it asked for is run, so a cite_page call here earns no label. Once more,
         // then it is the error it always was.
         if (!forcedRetried) {
@@ -214,17 +269,23 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
         })),
       })
 
+      const traced: AgentTraceToolCall[] = []
       for (const call of toolCalls) {
         state.toolsCalled.push(call.name)
-        const output = await runTool(context, parseToolCall(call))
+        const parsed = parseToolCall(call)
+        const output = await runTool(context, parsed)
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(output) })
+        traced.push(summarizeToolCall(call.name, parsed.ok ? parsed.args : undefined, output, recorder.contentEnabled))
       }
+      record({ toolCalls: traced })
     }
   } catch (error) {
     console.error(`[Sift] agent loop failed for tab ${tabId}:`, error)
+    await persistTrace(recorder, { status: 'error' })
     post(port, {
       type: 'ASK_ERROR',
       message: error instanceof Error ? error.message : 'Something went wrong answering that.',
+      traceId: recorder.id,
     })
   }
 }
@@ -246,7 +307,7 @@ function mustQuoteFirst({ citeEnabled, state }: ToolContext): boolean {
 }
 
 async function finish(context: ToolContext, tabId: number, question: string, content: string): Promise<void> {
-  const { port, page, state } = context
+  const { port, page, state, recorder } = context
   const answer = content.trimEnd()
   if (!answer) {
     throw new Error('Nebius returned no answer content.')
@@ -279,32 +340,77 @@ async function finish(context: ToolContext, tabId: number, question: string, con
     ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
   }
 
-  logTurn(tabId, source, context)
   await appendHistoryTurns(tabId, [{ role: 'user', content: question }, turn])
-  post(port, { type: 'ASK_DONE', turn })
+  const trace = await persistTrace(recorder, {
+    status: 'done',
+    answer,
+    source,
+    sourceFacts: {
+      usedWeb: state.usedWeb,
+      quoteVerified: quotes.length > 0,
+      pageTruncated: page.truncated,
+      quotedSearchResult: quotesFromSearch(state) > 0,
+    },
+  })
+  logTurn(trace, state)
+  post(port, { type: 'ASK_DONE', turn, traceId: recorder.id })
+}
+
+// The toggle is a preference, not a reason to fail a run: unreadable storage means off.
+async function readTraceToggle(): Promise<boolean> {
+  try {
+    return await getTraceContentEnabled()
+  } catch {
+    return false
+  }
+}
+
+// The manifest is absent outside a real extension context.
+function extensionVersion(): string {
+  try {
+    return chrome.runtime.getManifest().version
+  } catch {
+    return 'unknown'
+  }
+}
+
+// Never rejects (appendTrace swallows storage failures), so a trace can't cost the answer.
+async function persistTrace(recorder: TraceRecorder, outcome: Omit<FinalizeOutcome, 'extensionVersion'>): Promise<AgentTrace> {
+  const trace = finalizeTrace(recorder, { ...outcome, extensionVersion: extensionVersion() })
+  await appendTrace(trace)
+  return trace
+}
+
+function systemPromptText(messages: ChatMessage[]): string {
+  const first = messages[0]
+  return first?.role === 'system' && typeof first.content === 'string' ? first.content : ''
 }
 
 // One line per answer, in the style extractPage logs in. `unverified` looks the same
 // in the panel whether the model skipped cite_page, cited and had every quote
 // rejected, or was never offered the tool (a cut page); this is how to tell them apart
-// on a real page, which the fixtures in scripts/ can't do.
-function logTurn(tabId: number, source: AnswerSource, { citeEnabled, pageSearchEnabled, state }: ToolContext): void {
-  const cited = state.toolsCalled.filter((name) => name === CITE_PAGE).length
-  const cite = !citeEnabled
+// on a real page, which the fixtures in scripts/ can't do. What was offered, called and
+// asked comes from the trace; the verified-quote and passage counts and the problems are
+// loop state the trace only carries as prose, so they still come from there.
+function logTurn(trace: AgentTrace, state: LoopState): void {
+  const toolsCalled = trace.rounds.flatMap((round) => round.toolCalls.map((call) => call.name))
+  const offered = trace.toolsOffered ?? []
+  const cited = toolsCalled.filter((name) => name === CITE_PAGE).length
+  const cite = !offered.includes(CITE_PAGE)
     ? 'not offered (page cut off)'
     : cited === 0
       ? 'offered, not called'
       : `called ${cited}×, ${state.verifiedQuotes.size} verified`
   // Only on a page whose cut-off part could be searched: says whether the model looked.
-  const pageSearch = !pageSearchEnabled
+  const pageSearch = !offered.includes(SEARCH_PAGE)
     ? ''
     : state.pageSearches === 0
       ? ' search_page: offered, not called.'
       : ` search_page: called ${state.pageSearches}×, ${state.pagePassages} passages, ${quotesFromSearch(state)} verified quotes from them.`
-  const tools = state.toolsCalled.length ? state.toolsCalled.join(', ') : 'none'
-  const asked = state.askedToQuote ? ' First answer skipped cite_page; asked to quote first.' : ''
+  const tools = toolsCalled.length ? toolsCalled.join(', ') : 'none'
+  const asked = trace.askedToQuote ? ' First answer skipped cite_page; asked to quote first.' : ''
   const problems = state.problems.length ? ` Problems: ${state.problems.join(' | ')}` : ''
-  console.log(`[Sift] tab ${tabId} answered as ${source}. Tools: ${tools}. cite_page: ${cite}.${pageSearch}${asked}${problems}`)
+  console.log(`[Sift] tab ${trace.tabId} answered as ${trace.source}. Tools: ${tools}. cite_page: ${cite}.${pageSearch}${asked}${problems}`)
 }
 
 // Runs one validated tool call and returns whatever should go back as its result.
