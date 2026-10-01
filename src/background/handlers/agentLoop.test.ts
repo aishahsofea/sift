@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_MAX_PASSAGES, PAGE_SEARCH_PASSAGE_CHARS } from '../../shared/constants'
+import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_FETCH_PASSAGES, PAGE_SEARCH_MAX_PASSAGES, PAGE_SEARCH_PASSAGE_CHARS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 import { appendTrace } from '../history/agentTraces'
@@ -526,6 +526,20 @@ describe('a fetched page that comes back cut (#7)', () => {
 
     expect(toolNames(modelCalls[0].tools)).not.toContain('search_page')
     expect(toolNames(modelCalls[2].tools)).toEqual(['search_site', 'fetch_page', 'cite_page', 'search_page'])
+  })
+
+  it('returns up to six passages for a cut fetch, all from past the cut', async () => {
+    const head = 'threshold '.repeat(Math.ceil(FETCHED_PAGE_CHAR_LIMIT / 10) + 10)
+    const sections = Array.from({ length: 8 }, (_, i) => `${'lorem ipsum dolor sit amet '.repeat(150)}threshold section ${i}`)
+    vi.mocked(extractTavily).mockResolvedValue(head + sections.join(' '))
+    scriptModel(search('board pruning'), toolRound('fetch_page', { url: results[0].url }), scan('threshold'), answer('The threshold is 0.42.'))
+
+    await ask('How does board pruning decide what to remove?')
+
+    const [, , searchPageResult] = toolResults(3)
+    const passages = searchPageResult.passages as { offset: number; text: string }[]
+    expect(passages).toHaveLength(PAGE_SEARCH_FETCH_PASSAGES)
+    for (const { offset, text } of passages) expect(offset + text.length).toBeGreaterThan(FETCHED_PAGE_CHAR_LIMIT)
   })
 
   it('does not switch cite_page to the search_page-aware wording: cite_page still only checks the tab page', async () => {

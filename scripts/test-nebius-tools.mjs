@@ -427,7 +427,7 @@ const PAGE_SEARCH_EMPTY_NOTE =
 const PAGE_SEARCH_NOTE_FETCHED =
   "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words.";
 const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
-  "Nothing in the fetched page matches those words. Search again with different words, or answer from what you have.";
+  "Nothing past the start of the fetched page matches those words. Search again with different words, or answer from what you have.";
 // FETCH_NOTE's cut counterpart (#7), shown whether or not cite_page is on offer: the
 // only place the model learns a fetch was incomplete and search_page can reach the rest.
 // Mirror FETCH_NOTE_CUT in src/background/nebius/tools.ts.

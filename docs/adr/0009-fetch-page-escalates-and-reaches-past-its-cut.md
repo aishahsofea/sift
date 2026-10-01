@@ -341,3 +341,25 @@ above stand uncaveated.
   uncaveated.
 - Don't run several eval processes at once against one key: Nebius answers with a 4xx, and
   the client reports it as a key error (17 of the 60 runs in the A/B above).
+
+## Addendum: searching past the cut, six passages (#27)
+
+For a cut `fetch_page` result, `search_page` now ranks only the windows past the cut and
+returns up to six passages (`PAGE_SEARCH_FETCH_PASSAGES`), not four with two reserved. The
+head is already in the model's context, so searching it spent slots on text the model had.
+The tab-page search is unchanged.
+
+- Offline, on 16 hand-written queries over the methods paper: 10 reach all three
+  thresholds as shipped, 12 with past-the-cut alone, 15 with six passages (alone or
+  together). These are not the issue's 16, which weren't recorded. Their baseline is 10,
+  not the issue's 9.
+- Live (Nano, one `fetchPageEscalation.eval.ts` run, 15 gate runs): all three thresholds
+  in 4 of 15 runs, and in 4 of the 8 that searched the fetched page after reading it. The
+  issue's baseline was 4 of 35. Five of the 15 never searched the site, so the model never
+  reached `search_page`; that is the tab-page coverage gap above, not retrieval. Sample
+  sizes are small, so the gain is suggestive, not established.
+- The three threshold `expect`s stay off. A `THRESHOLD_FLOOR` of 0.25 over the runs that
+  searched after reading guards against retrieval regressing.
+- Bare "threshold" and "graph pruning" queries still miss some thresholds.
+- `PAGE_SEARCH_EMPTY_NOTE_FETCHED` now says nothing was found "past the start of the
+  fetched page", since the head is excluded.

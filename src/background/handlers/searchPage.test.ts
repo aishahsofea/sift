@@ -187,4 +187,42 @@ describe('searchPage', () => {
     // Generous: it runs in tens of milliseconds. This only catches an accidental O(n^2).
     expect(performance.now() - started).toBeLessThan(2_000)
   })
+
+  describe('pastCutOnly and maxPassages', () => {
+    const cutAt = 20_000
+    // "jailbreak" in the head, then in six places spread past the cut.
+    const spread = [filler(cutAt - 2_000), 'jailbreak in the head']
+    for (let i = 0; i < 6; i++) spread.push(filler(8_000), `jailbreak section ${i}`)
+    const page = spread.join(' ')
+
+    it('keeps the defaults when no options are given', () => {
+      expect(searchPage(page, 'jailbreak', cutAt)).toHaveLength(PAGE_SEARCH_MAX_PASSAGES)
+    })
+
+    it('leaves out a match in the head', () => {
+      const results = searchPage(page, 'jailbreak', cutAt, { pastCutOnly: true, maxPassages: 8 })
+
+      expect(results.length).toBeGreaterThan(0)
+      expect(results.some((r) => r.text.includes('in the head'))).toBe(false)
+    })
+
+    it('caps the result at maxPassages', () => {
+      expect(searchPage(page, 'jailbreak', cutAt, { pastCutOnly: true, maxPassages: 6 })).toHaveLength(6)
+      expect(searchPage(page, 'jailbreak', cutAt, { pastCutOnly: true, maxPassages: 2 })).toHaveLength(2)
+    })
+
+    it('returns passages that do not overlap and say where they start', () => {
+      const results = searchPage(page, 'jailbreak', cutAt, { pastCutOnly: true, maxPassages: 6 })
+      const byOffset = [...results].sort((a, b) => a.offset - b.offset)
+
+      for (const r of results) expect(page.slice(r.offset, r.offset + r.text.length)).toBe(r.text)
+      for (let i = 1; i < byOffset.length; i++) {
+        expect(byOffset[i].offset).toBeGreaterThanOrEqual(byOffset[i - 1].offset + byOffset[i - 1].text.length)
+      }
+    })
+
+    it('returns nothing when the page was not cut', () => {
+      expect(searchPage(page, 'jailbreak', page.length, { pastCutOnly: true })).toEqual([])
+    })
+  })
 })

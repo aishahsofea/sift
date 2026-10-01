@@ -1,4 +1,4 @@
-import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS } from '../../shared/constants'
+import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_FETCH_PASSAGES } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { AgentTrace, AgentTraceToolCall, ChatTurn, ExtractedPage } from '../../shared/types'
 import { truncate } from '../../shared/truncate'
@@ -491,7 +491,11 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
 function searchWholePage({ port, page, pageSearchEnabled, fullContent, state }: ToolContext, query: string): unknown {
   if (state.fetchedFullContent !== undefined) {
     post(port, { type: 'ASK_STEP', step: { kind: 'scanning', query } })
-    const passages = searchPage(state.fetchedFullContent, query, FETCHED_PAGE_CHAR_LIMIT)
+    const passages = searchPage(state.fetchedFullContent, query, FETCHED_PAGE_CHAR_LIMIT, {
+      // The head is already in the model's context, so every slot goes past the cut (#27).
+      pastCutOnly: true,
+      maxPassages: PAGE_SEARCH_FETCH_PASSAGES,
+    })
     state.pageSearches++
     state.pagePassages += passages.length
     return { passages, note: passages.length ? PAGE_SEARCH_NOTE_FETCHED : PAGE_SEARCH_EMPTY_NOTE_FETCHED }

@@ -36,6 +36,13 @@ function stem(word: string): string {
   return singular.slice(0, STEM_CHARS)
 }
 
+// For a fetched page the head is already in the prompt, so `pastCutOnly` ranks only the
+// windows past `cutAt` and `maxPassages` sets how many to return (#27).
+export interface SearchPageOptions {
+  pastCutOnly?: boolean
+  maxPassages?: number
+}
+
 // The local half of search_page (#11, ADR 0006): BM25 over the page text, no model, no
 // network. Returns up to PAGE_SEARCH_MAX_PASSAGES passages, best first, none of them
 // overlapping, each with the character offset it starts at.
@@ -47,7 +54,15 @@ function stem(word: string): string {
 // is guaranteed PAGE_SEARCH_CUT_PASSAGES slots before rank fills the rest: a head that
 // names the word in its table of contents and abstract must not push out the section
 // body it summarizes (#5).
-export function searchPage(text: string, query: string, cutAt = text.length): PagePassage[] {
+//
+// For a fetched page the head is already in the prompt, so `pastCutOnly` ranks only the
+// windows past `cutAt` and `maxPassages` sets how many to return (#27).
+export function searchPage(
+  text: string,
+  query: string,
+  cutAt = text.length,
+  { pastCutOnly = false, maxPassages = PAGE_SEARCH_MAX_PASSAGES }: SearchPageOptions = {},
+): PagePassage[] {
   const terms = new Set(Array.from(query.matchAll(WORD), (match) => stem(match[0])))
   if (!terms.size) return []
 
@@ -81,7 +96,9 @@ export function searchPage(text: string, query: string, cutAt = text.length): Pa
 
   // Best score first; equal scores fall to the earlier window, so the result is the same every time.
   const byScore = (a: number, b: number) => scores.get(b)! - scores.get(a)! || a - b
-  const ranked = [...scores.keys()].sort(byScore)
+  // A window is in the cut-off part when its middle is. A page that wasn't cut has none.
+  const pastCut = (window: number) => (window + 1) * STRIDE >= cutAt
+  const ranked = [...scores.keys()].filter((window) => !pastCutOnly || (cutAt < text.length && pastCut(window))).sort(byScore)
 
   const chosen: number[] = []
   const take = (windows: number[], upTo: number) => {
@@ -92,9 +109,8 @@ export function searchPage(text: string, query: string, cutAt = text.length): Pa
       chosen.push(window)
     }
   }
-  // A window is in the cut-off part when its middle is. A page that wasn't cut has none.
-  if (cutAt < text.length) take(ranked.filter((window) => (window + 1) * STRIDE >= cutAt), PAGE_SEARCH_CUT_PASSAGES)
-  take(ranked, PAGE_SEARCH_MAX_PASSAGES)
+  if (!pastCutOnly && cutAt < text.length) take(ranked.filter(pastCut), PAGE_SEARCH_CUT_PASSAGES)
+  take(ranked, maxPassages)
 
   return chosen.sort(byScore).map((window) => passage(text, window * STRIDE, (window + 2) * STRIDE))
 }
