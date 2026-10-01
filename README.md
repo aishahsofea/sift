@@ -9,7 +9,30 @@ Built for the Nebius x NVIDIA hackathon. Runs on
 [Nebius Token Factory](https://tokenfactory.nebius.com) using an NVIDIA
 Nemotron model.
 
-## Requirements
+## Try it (no build needed)
+
+1. Download `sift-extension.zip` from the
+   [latest release](https://github.com/aishahsofea/sift/releases/latest) and unzip it.
+2. Go to `chrome://extensions`, enable **Developer mode**, click **Load unpacked**
+   and select the unzipped folder.
+3. Open the extension's **Details → Extension options**, enter a Nebius and a
+   Tavily API key, and **Save**. Hackathon judges: the keys are in the private
+   testing instructions on the Devpost submission.
+4. Open any `http(s)://` page and click the Sift toolbar icon to ask a question.
+
+## How it uses Nebius and NVIDIA
+
+- **NVIDIA Nemotron** (an open-source NVIDIA model) does all the reasoning:
+  deciding whether the page answers the question, calling tools, and writing the
+  answer.
+- **Nebius Token Factory** serves it, with native tool calling and streaming.
+  Every turn is one or more chat completions against it.
+- **Tavily** provides the site-scoped search the model reaches for when the page
+  doesn't cover the question.
+
+## Build from source
+
+### Requirements
 
 - Node.js `^20.19.0` or `>=22.12.0` (see `.nvmrc` for the version this was
   built against). Vite 8 will fail to start on older Node 20.x with a
@@ -19,7 +42,7 @@ Nemotron model.
   still answers from the page and says so when the page doesn't cover the
   question.
 
-## Setup
+### Setup
 
 ```bash
 npm install
@@ -30,7 +53,7 @@ This runs two separate Vite builds (the extension shell, and the content
 script — see the "two Vite configs" note in [PLAN.md](PLAN.md) for why) and
 produces a `dist/` directory.
 
-## Load the extension in Chrome
+### Load the extension in Chrome
 
 1. Go to `chrome://extensions`.
 2. Enable **Developer mode** (top right).
