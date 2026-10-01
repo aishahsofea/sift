@@ -74,3 +74,97 @@ export type UnreadableReason =
   | 'permission-denied'
   | 'no-content'
   | 'unknown-error'
+
+// One piece of run text gated by the trace content toggle (STORAGE_KEYS.traceContentEnabled,
+// off by default): `length` is always recorded, `text` only when the toggle is on. Reused by
+// every trace field whose "off" substitute is a bare count rather than a summary (#18).
+export interface TracedText {
+  length: number
+  text?: string
+}
+
+// A round's token usage, straight off the wire (`stream_options.include_usage`). Fields are
+// optional individually, not as a group: a round Nebius returns without usage is missing
+// every field, never zeroed, so a reader can't mistake "not reported" for "reported as zero".
+export interface TokenUsage {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  cachedTokens?: number
+}
+
+export type AgentTraceStatus = 'done' | 'error' | 'panel-closed'
+
+export interface AgentTraceTiming {
+  /** Absent when the round ended before any content or tool-call byte arrived. */
+  firstByteMs?: number
+  durationMs: number
+}
+
+export interface AgentTraceToolCall {
+  name: string
+  ok: boolean
+  /** Always present, even with the content toggle off, e.g. "3 quotes, 2 verified, 1 rejected as too short". */
+  summary: string
+  args?: unknown
+  result?: unknown
+}
+
+export interface AgentTraceRound {
+  index: number
+  model: string
+  usage?: TokenUsage
+  finishReason?: string
+  timing: AgentTraceTiming
+  /** Tools were stripped and a one-off nudge appended this round because MAX_TOOL_ROUNDS was reached (ADR 0003). */
+  forced: boolean
+  reasoning?: TracedText
+  toolCalls: AgentTraceToolCall[]
+  /** The unprompted answer mustQuoteFirst discarded this round, when it did (ADR 0005). */
+  discardedAnswer?: TracedText
+}
+
+// Mirrors AnswerFacts in background/handlers/answerSource.ts — shared/ can't import from
+// background/, so this is a deliberate duplicate, not drift. Kept alongside `source` so the
+// trace shows why deriveSource picked that label, not only which one it picked.
+export interface AgentTraceSourceFacts {
+  usedWeb: boolean
+  quoteVerified: boolean
+  pageTruncated: boolean
+  quotedSearchResult: boolean
+}
+
+// The page's shape, never its text: that's already in chrome.storage.session, keyed by tabId.
+export interface AgentTracePage {
+  length: number
+  truncated: boolean
+  charsOmitted: number
+  extractionMethod: ExtractedPage['extractionMethod']
+  searchable: boolean
+}
+
+// One record per START_ASK run (#18), written as the run goes so an errored or panel-closed
+// run still leaves one. `page`, `toolsOffered`, `promptHash` and `toolsHash` are absent only
+// for the two exits that happen before a page ever loads (no API key, no cached page) — every
+// other field has a meaningful value even then.
+export interface AgentTrace {
+  id: string
+  tabId: number
+  startedAt: string
+  endedAt: string
+  status: AgentTraceStatus
+  extensionVersion: string
+  question: TracedText
+  answer?: TracedText
+  source?: AnswerSource
+  sourceFacts?: AgentTraceSourceFacts
+  page?: AgentTracePage
+  toolsOffered?: string[]
+  /** Hash of the system prompt with `page.content` spliced out: a diffing fingerprint, not a wording checksum. */
+  promptHash?: string
+  toolsHash?: string
+  askedToQuote: boolean
+  forcedNudgeSent: boolean
+  forcedRetrySent: boolean
+  rounds: AgentTraceRound[]
+}

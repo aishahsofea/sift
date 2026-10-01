@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_MAX_PASSAGES, PAGE_SEARCH_PASSAGE_CHARS } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
+import { appendTrace } from '../history/agentTraces'
 import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
-import { getApiKeys } from '../keys'
+import { getApiKeys, getTraceContentEnabled } from '../keys'
 import { streamAgentTurn, type AgentTurn } from '../nebius/client'
 import type { ChatMessage } from '../nebius/promptAssembly'
 import {
@@ -33,7 +34,8 @@ vi.mock('../history/sessionHistory', () => ({
   getHistory: vi.fn(),
   appendHistoryTurns: vi.fn(),
 }))
-vi.mock('../keys', () => ({ getApiKeys: vi.fn() }))
+vi.mock('../history/agentTraces', () => ({ getTraces: vi.fn(), appendTrace: vi.fn() }))
+vi.mock('../keys', () => ({ getApiKeys: vi.fn(), getTraceContentEnabled: vi.fn() }))
 vi.mock('../nebius/client', () => ({ streamAgentTurn: vi.fn() }))
 vi.mock('../tavily/client', () => ({ searchTavily: vi.fn(), extractTavily: vi.fn() }))
 
@@ -117,10 +119,12 @@ beforeEach(() => {
   callId = 0
   modelCalls = []
   vi.mocked(getApiKeys).mockResolvedValue({ nebiusApiKey: 'nebius-key', tavilyApiKey: 'tavily-key' })
+  vi.mocked(getTraceContentEnabled).mockResolvedValue(false)
   vi.mocked(getExtractedPage).mockResolvedValue(wholePage)
   vi.mocked(getFullPageContent).mockResolvedValue(undefined)
   vi.mocked(getHistory).mockResolvedValue([])
   vi.mocked(appendHistoryTurns).mockResolvedValue([])
+  vi.mocked(appendTrace).mockResolvedValue(undefined)
 })
 
 describe('quote-then-answer (ADR 0005)', () => {
@@ -1092,5 +1096,143 @@ describe('a cut-short page whose rest was kept', () => {
       expect(vi.mocked(getFullPageContent)).not.toHaveBeenCalled()
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page'])
     })
+  })
+})
+
+describe('a trace for every exit (#18)', () => {
+  const traced = () => vi.mocked(appendTrace).mock.calls.map(([trace]) => trace)
+
+  it('ties a finished run to one done trace', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+    const { posted } = await ask()
+    const done = posted.find((m) => m.type === 'ASK_DONE')
+
+    expect(traced()).toHaveLength(1)
+    expect(traced()[0]).toMatchObject({ status: 'done', source: 'page', askedToQuote: false })
+    expect(done && 'traceId' in done && done.traceId).toBe(traced()[0].id)
+  })
+
+  it('leaves an error trace when the model fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    scriptModel(answer(''))
+    const { posted } = await ask()
+    const failed = posted.find((m) => m.type === 'ASK_ERROR')
+
+    expect(traced()).toHaveLength(1)
+    expect(traced()[0].status).toBe('error')
+    expect(failed && 'traceId' in failed && failed.traceId).toBe(traced()[0].id)
+  })
+
+  it('leaves an error trace with no API key', async () => {
+    vi.mocked(getApiKeys).mockResolvedValue({ nebiusApiKey: '', tavilyApiKey: undefined })
+    const { posted } = await ask()
+
+    expect(traced().map((t) => t.status)).toEqual(['error'])
+    expect(posted[0]).toMatchObject({ type: 'ASK_ERROR', traceId: traced()[0].id })
+  })
+
+  it('leaves an error trace with no page', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(undefined)
+    const { posted } = await ask()
+
+    expect(traced().map((t) => t.status)).toEqual(['error'])
+    expect(posted[0]).toMatchObject({ type: 'ASK_ERROR', traceId: traced()[0].id })
+  })
+
+  it('leaves a panel-closed trace, and posts nothing, when the panel goes before a round', async () => {
+    const posted: AskPortMessage[] = []
+    const port = {
+      postMessage: (message: AskPortMessage) => posted.push(message),
+      onDisconnect: { addListener: (listener: () => void) => listener() },
+    } as unknown as chrome.runtime.Port
+
+    await runAgentLoop(port, 1, 'How many beta testers were there?')
+
+    expect(posted).toEqual([])
+    expect(vi.mocked(streamAgentTurn)).not.toHaveBeenCalled()
+    expect(traced().map((t) => t.status)).toEqual(['panel-closed'])
+  })
+
+  it('records each round: a verified quote, then the answer', async () => {
+    scriptModel(
+      { ...cite(QUOTE), model: 'nemotron', usage: { promptTokens: 10, completionTokens: 2 }, finishReason: 'tool_calls', reasoning: 'hmm' },
+      answer('1,200.'),
+    )
+    await ask()
+    const [first, second] = traced()[0].rounds
+
+    expect(traced()[0].rounds).toHaveLength(2)
+    expect(first).toMatchObject({ index: 0, model: 'nemotron', finishReason: 'tool_calls', forced: false })
+    expect(first.usage).toEqual({ promptTokens: 10, completionTokens: 2 })
+    expect(first.reasoning).toEqual({ length: 3 })
+    expect(first.toolCalls).toEqual([expect.objectContaining({ name: 'cite_page', ok: true, summary: '1 quote, 1 verified' })])
+    expect(first.toolCalls[0].args).toBeUndefined()
+    expect(second).toMatchObject({ index: 1, toolCalls: [], usage: undefined })
+  })
+
+  it('keeps the discarded answer of a quote-first nudge, redacted unless the toggle is on', async () => {
+    scriptModel(answer('Unquoted guess.'), cite(QUOTE), answer('1,200.'))
+    await ask()
+
+    expect(traced()[0].askedToQuote).toBe(true)
+    expect(traced()[0].rounds[0].discardedAnswer).toEqual({ length: 'Unquoted guess.'.length })
+
+    vi.mocked(appendTrace).mockClear()
+    vi.mocked(getTraceContentEnabled).mockResolvedValue(true)
+    scriptModel(answer('Unquoted guess.'), cite(QUOTE), answer('1,200.'))
+    await ask()
+
+    expect(traced()[0].rounds[0].discardedAnswer?.text).toBe('Unquoted guess.')
+    expect(traced()[0].rounds[1].toolCalls[0].args).toEqual({ quotes: [QUOTE] })
+  })
+
+  it('records a search then a fetch round', async () => {
+    const url = 'https://loomkit.example/pricing'
+    vi.mocked(searchTavily).mockResolvedValue([{ title: 'Pricing', url, content: 'Pro: $17.50.' }])
+    vi.mocked(extractTavily).mockResolvedValue('Pro: $17.50 per user per month.')
+    scriptModel(search('pricing'), toolRound('fetch_page', { url }), answer('$17.50.'))
+    await ask()
+
+    expect(traced()[0].rounds.map((r) => r.toolCalls.map((t) => t.summary))).toEqual([
+      ['1 results found'],
+      ['fetched 31 chars'],
+      [],
+    ])
+  })
+
+  it('records the forced final round and the nudges it sent', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rounds = Array.from({ length: MAX_TOOL_ROUNDS }, () => search('pricing'))
+    vi.mocked(searchTavily).mockResolvedValue([])
+    scriptModel(...rounds, search('again'), search('again'))
+    await ask()
+    const trace = traced()[0]
+
+    expect(trace.status).toBe('error')
+    expect(trace.forcedNudgeSent).toBe(true)
+    expect(trace.forcedRetrySent).toBe(true)
+    expect(trace.rounds.filter((r) => r.forced)).toHaveLength(2)
+    expect(trace.rounds.at(-1)?.toolCalls).toEqual([])
+  })
+
+  it('keeps the rounds so far on an error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    scriptModel(cite(QUOTE), answer(''))
+    await ask()
+
+    expect(traced()[0].status).toBe('error')
+    expect(traced()[0].rounds).toHaveLength(2)
+  })
+
+  it('still answers when the trace cannot be stored', async () => {
+    vi.mocked(appendTrace).mockResolvedValue(undefined)
+    vi.mocked(getTraceContentEnabled).mockRejectedValue(new Error('storage gone'))
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    const { turn, error } = await ask()
+
+    expect(error).toBeUndefined()
+    expect(turn.source).toBe('page')
+    expect(traced()[0].question.text).toBeUndefined()
   })
 })

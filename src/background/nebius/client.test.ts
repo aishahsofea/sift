@@ -49,6 +49,11 @@ function stubStreamingFetch() {
 }
 
 const sseLine = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+// The terminal chunk stream_options.include_usage adds: choices is empty, usage is populated.
+const sseUsageLine = (usage: unknown) => `data: ${JSON.stringify({ choices: [], usage })}\n\n`
+const sseFinishLine = (finish_reason: string) => `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason }] })}\n\n`
+const sseReasoningLine = (reasoning: string, field: 'reasoning' | 'reasoning_content' = 'reasoning') =>
+  `data: ${JSON.stringify({ choices: [{ delta: { [field]: reasoning } }] })}\n\n`
 
 describe('streamAgentTurn idle timeout (#28)', () => {
   beforeEach(() => {
@@ -107,5 +112,94 @@ describe('streamAgentTurn idle timeout (#28)', () => {
     const result = await promise
     expect(result.content).toBe('Hi there')
     expect(onContent).toHaveBeenCalledWith('Hi there')
+  })
+})
+
+describe('streamAgentTurn per-round metadata (#18)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('captures usage from the include_usage terminal chunk, whose choices array is empty', async () => {
+    const { push, end } = stubStreamingFetch()
+
+    const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    push(sseLine('Hi'))
+    await vi.advanceTimersByTimeAsync(0)
+    push(sseUsageLine({ prompt_tokens: 120, completion_tokens: 40, total_tokens: 160, prompt_tokens_details: { cached_tokens: 96 } }))
+    await vi.advanceTimersByTimeAsync(0)
+    end()
+
+    const result = await promise
+    expect(result.usage).toEqual({ promptTokens: 120, completionTokens: 40, totalTokens: 160, cachedTokens: 96 })
+  })
+
+  it('leaves usage undefined when Nebius never sends a usage chunk', async () => {
+    const { push, end } = stubStreamingFetch()
+
+    const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    push(sseLine('Hi'))
+    await vi.advanceTimersByTimeAsync(0)
+    end()
+
+    const result = await promise
+    expect(result.usage).toBeUndefined()
+  })
+
+  it('captures the finish_reason carried on a choices chunk', async () => {
+    const { push, end } = stubStreamingFetch()
+
+    const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    push(sseLine('Hi'))
+    await vi.advanceTimersByTimeAsync(0)
+    push(sseFinishLine('stop'))
+    await vi.advanceTimersByTimeAsync(0)
+    end()
+
+    const result = await promise
+    expect(result.finishReason).toBe('stop')
+  })
+
+  it.each(['reasoning', 'reasoning_content'] as const)(
+    'accumulates chain-of-thought text under `%s` without ever passing it to onContent',
+    async (field) => {
+      const { push, end } = stubStreamingFetch()
+      const onContent = vi.fn()
+
+      const promise = streamAgentTurn('key', [], { onContent })
+      await vi.advanceTimersByTimeAsync(0)
+      push(sseReasoningLine('Thinking it through...', field))
+      await vi.advanceTimersByTimeAsync(0)
+      push(sseLine('Answer'))
+      await vi.advanceTimersByTimeAsync(0)
+      end()
+
+      const result = await promise
+      expect(result.reasoning).toBe('Thinking it through...')
+      expect(onContent).toHaveBeenCalledTimes(1)
+      expect(onContent).toHaveBeenCalledWith('Answer')
+    },
+  )
+
+  it('returns the resolved model id and a timing summary alongside content', async () => {
+    const { push, end } = stubStreamingFetch()
+
+    const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    push(sseLine('Hi'))
+    await vi.advanceTimersByTimeAsync(0)
+    end()
+
+    const result = await promise
+    expect(result.model).toBe('test-model')
+    expect(result.timing?.durationMs).toBeGreaterThanOrEqual(0)
+    expect(result.timing?.firstByteMs).toBeGreaterThanOrEqual(0)
   })
 })

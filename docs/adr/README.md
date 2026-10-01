@@ -24,3 +24,4 @@ ADR NNNN` — edit the status of the old record instead of deleting it.
 | [0008](0008-side-panel-is-opened-per-tab-by-hand.md) | Side panel is opened per tab by hand, not via a manifest `default_path` | accepted |
 | [0009](0009-fetch-page-escalates-and-reaches-past-its-cut.md) | A cut `fetch_page` result is searched like a cut page | proposed |
 | [0010](0010-abort-a-stalled-nebius-stream-on-silence.md) | Abort a stalled Nebius stream on silence, not total duration | accepted |
+| [0011](0011-agent-loop-run-tracing.md) | Trace each agent-loop run, content off by default | proposed |
