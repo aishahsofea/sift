@@ -48,6 +48,20 @@ describe('withRetry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it("surfaces the demo proxy's cap as its own message, not a key error", async () => {
+    const limited = new Response(JSON.stringify({ message: 'Daily limit reached.' }), { status: 429, headers: { 'X-Sift-Demo-Limit': 'global' } })
+    const fetchMock = stubFetch(limited)
+
+    await expect(withRetry('https://example.test', {})).rejects.toThrow('Daily limit reached.')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a 429 without the demo header as a plain 4xx', async () => {
+    stubFetch(new Response(null, { status: 429 }))
+
+    await expect(withRetry('https://example.test', {})).rejects.toThrow(/check your API key/)
+  })
+
   it('does not retry a fetch that rejects because its own signal was aborted', async () => {
     const controller = new AbortController()
     controller.abort()

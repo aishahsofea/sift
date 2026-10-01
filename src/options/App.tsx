@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getTraces } from '../background/history/agentTraces'
 import type { AgentTrace } from '../shared/types'
+import { DEMO_PROXY_URL } from '../shared/constants'
 import { STORAGE_KEYS } from '../shared/storageKeys'
 import { RecentRuns } from './RecentRuns'
 
@@ -40,6 +41,12 @@ export default function App() {
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 480 }}>
       <h1>Sift Options</h1>
+      {DEMO_PROXY_URL && (
+        <p>
+          Leave a key blank to use Sift's shared demo for that service (daily limits apply). Your page text and questions go through the demo
+          server to reach Nebius and Tavily. Add your own key to talk to the provider directly.
+        </p>
+      )}
       <label style={{ display: 'block', marginBottom: '1rem' }}>
         Nebius API key
         <input

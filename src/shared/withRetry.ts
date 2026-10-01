@@ -18,6 +18,12 @@ async function attempt(url: string, init: RequestInit, isRetry: boolean): Promis
     return attempt(url, init, true)
   }
 
+  // The demo proxy's own cap, not a bad key: say what happened and what to do (#39).
+  if (res.status === 429 && res.headers.get('X-Sift-Demo-Limit')) {
+    const body = (await res.json().catch(() => undefined)) as { message?: string } | undefined
+    throw new Error(body?.message ?? 'The shared demo has hit its daily limit. Add your own API keys in Options.')
+  }
+
   if (res.status >= 400 && res.status < 500) {
     throw new Error('Request failed — check your API key in Options.')
   }

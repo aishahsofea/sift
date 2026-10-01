@@ -51,6 +51,11 @@ export const PAGE_SEARCH_CUT_PASSAGES = 2
 export const PAGE_SEARCH_FETCH_PASSAGES = 6
 
 export const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1'
+export const TAVILY_BASE_URL = 'https://api.tavily.com'
+
+// The demo proxy (worker/, #39), baked in at build time. Empty means demo mode is off and a
+// missing key is an error, as before.
+export const DEMO_PROXY_URL: string = (import.meta.env.VITE_DEMO_PROXY_URL ?? '').replace(/\/+$/, '')
 
 // Aborts a chat-completions stream that has gone silent for this long — reset on every
 // chunk, not a cap on the request's total duration, which would kill a legitimately

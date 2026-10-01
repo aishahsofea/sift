@@ -25,6 +25,8 @@ export interface AgentTurn {
 interface StreamAgentTurnOptions {
   /** Omitted on the forced final round, which is what makes the model answer (ADR 0003). */
   tools?: unknown
+  /** The demo proxy's /nebius path when the key is an install ID; the real API otherwise. */
+  baseUrl?: string
   /** Fires per visible-answer delta. Never fires with leading or empty whitespace. */
   onContent: (delta: string) => void
 }
@@ -35,12 +37,12 @@ interface StreamAgentTurnOptions {
 export async function streamAgentTurn(
   apiKey: string,
   messages: ChatMessage[],
-  { tools, onContent }: StreamAgentTurnOptions,
+  { tools, baseUrl = NEBIUS_BASE_URL, onContent }: StreamAgentTurnOptions,
 ): Promise<AgentTurn> {
   // Marks this round's start for `timing` below — before model resolution and the POST,
   // both of which are real, attributable latency on a cold service worker.
   const startedAt = Date.now()
-  const model = await resolveNemotronModel(apiKey)
+  const model = await resolveNemotronModel(apiKey, baseUrl)
 
   // Aborts on silence, not on total duration (#28): a stall during connect or between
   // chunks means Nebius has stopped sending bytes, and nothing else here would ever
@@ -58,7 +60,7 @@ export async function streamAgentTurn(
 
   try {
     armIdleTimer()
-    const res = await withRetry(`${NEBIUS_BASE_URL}/chat/completions`, {
+    const res = await withRetry(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

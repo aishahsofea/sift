@@ -82,6 +82,8 @@ interface ToolContext {
   page: ExtractedPage
   /** Absent when no Tavily key is configured: the web tools then refuse rather than run. */
   tavilyApiKey: string | undefined
+  /** The demo proxy's /tavily path when the key is an install ID. */
+  tavilyBaseUrl?: string
   /** Whether cite_page was offered this turn. A call to it when it wasn't is refused. */
   citeEnabled: boolean
   /** Whether search_page was offered this turn, which is also whether `fullContent` is there to search. */
@@ -106,7 +108,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
   const recorder = createTraceRecorder({ tabId, question, contentEnabled: await readTraceToggle() })
 
   try {
-    const { nebiusApiKey, tavilyApiKey } = await getApiKeys()
+    const { nebiusApiKey, tavilyApiKey, nebiusBaseUrl, tavilyBaseUrl } = await getApiKeys()
     if (!nebiusApiKey) {
       const message = 'Add your Nebius API key in Options before asking questions.'
       await persistTrace(recorder, { status: 'error' })
@@ -158,7 +160,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     // A quote is checked against the whole page, not only the part the prompt holds:
     // the model can quote what search_page found there.
     const quotable = pageText(page, fullContent)
-    const context: ToolContext = { port, page, tavilyApiKey, citeEnabled, pageSearchEnabled, fullContent, quotable, state, recorder }
+    const context: ToolContext = { port, page, tavilyApiKey, tavilyBaseUrl, citeEnabled, pageSearchEnabled, fullContent, quotable, state, recorder }
 
     recorder.page = {
       length: page.content.length,
@@ -212,6 +214,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
 
       const roundStart = Date.now()
       const turn = await streamAgentTurn(nebiusApiKey, turnMessages, {
+        baseUrl: nebiusBaseUrl,
         tools: forced || !roundTools.length ? undefined : roundTools,
         // An answer that is about to be thrown away is not shown while it is written.
         onContent: (delta) => {
@@ -417,7 +420,7 @@ function logTurn(trace: AgentTrace, state: LoopState): void {
 // Every failure path returns an error object rather than throwing: the model gets
 // the message as the tool result and can correct itself on the next round.
 async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unknown> {
-  const { port, page, tavilyApiKey, citeEnabled, state } = context
+  const { port, page, tavilyApiKey, tavilyBaseUrl, citeEnabled, state } = context
 
   if (!call.ok) {
     state.problems.push(call.error)
@@ -443,7 +446,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
     const domain = scopeToDomain(page.url)
     post(port, { type: 'ASK_STEP', step: { kind: 'searching', domain, query: call.args.query } })
 
-    const results = await searchTavily(tavilyApiKey, call.args.query, page.url)
+    const results = await searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl)
     for (const result of results) state.allowedUrls.add(result.url)
     if (results.length) state.usedWeb = true
     return { results, ...(citeEnabled ? { note: SEARCH_NOTE } : {}) }
@@ -457,7 +460,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   }
 
   post(port, { type: 'ASK_STEP', step: { kind: 'reading', url: call.args.url } })
-  const raw = await extractTavily(tavilyApiKey, call.args.url)
+  const raw = await extractTavily(tavilyApiKey, call.args.url, tavilyBaseUrl)
   if (!raw) {
     return { error: "That page couldn't be read. Use the search snippets, or search again." }
   }
