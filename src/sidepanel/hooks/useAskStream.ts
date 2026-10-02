@@ -9,7 +9,7 @@ export function useAskStream() {
   const [text, setText] = useState('')
   const [step, setStep] = useState<AgentStep | null>(null)
 
-  const start = useCallback((tabId: number, question: string): Promise<AskResult> => {
+  const start = useCallback((tabId: number, question: string, rewind?: number): Promise<AskResult> => {
     setActive(true)
     setText('')
     setStep(null)
@@ -44,7 +44,7 @@ export function useAskStream() {
         }
       })
 
-      const request: AskPortRequest = { type: 'START_ASK', tabId, question }
+      const request: AskPortRequest = { type: 'START_ASK', tabId, question, rewind }
       port.postMessage(request)
     })
   }, [])

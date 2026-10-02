@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from '@assistant-ui/react'
 import type { ChatTurn } from '../../shared/types'
 
 // useChat stays the source of truth (history, the background port); assistant-ui only
@@ -18,18 +18,20 @@ function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
 interface Props {
   turns: ChatTurn[]
   isRunning: boolean
-  onAsk: (question: string) => void
+  onAsk: (question: string, editedIndex?: number) => void
   children: ReactNode
 }
 
 export function SiftRuntimeProvider({ turns, isRunning, onAsk, children }: Props) {
+  const textOf = (message: AppendMessage) => message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
   const runtime = useExternalStoreRuntime<ChatTurn>({
     messages: turns,
     isRunning,
     convertMessage: convertTurn,
-    onNew: async (message) => {
-      const text = message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
-      onAsk(text)
+    onNew: async (message) => onAsk(textOf(message)),
+    onEdit: async (message) => {
+      const index = Number(message.sourceId?.replace('turn-', ''))
+      onAsk(textOf(message), Number.isInteger(index) ? index : undefined)
     },
   })
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>

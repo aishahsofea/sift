@@ -2,7 +2,7 @@ import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_FETCH_PASSAGES } 
 import type { AskPortMessage } from '../../shared/messages'
 import type { AgentTrace, AgentTraceToolCall, ChatTurn, ExtractedPage } from '../../shared/types'
 import { truncate } from '../../shared/truncate'
-import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
+import { appendHistoryTurns, dropLastHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
 import { appendTrace } from '../history/agentTraces'
 import { getApiKeys, getTraceContentEnabled } from '../keys'
 import { streamAgentTurn } from '../nebius/client'
@@ -97,7 +97,7 @@ interface ToolContext {
   recorder: TraceRecorder
 }
 
-export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, question: string): Promise<void> {
+export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, question: string, rewind = 0): Promise<void> {
   // The panel can close mid-loop (a search round takes seconds). Once it has, no
   // one is listening, so stop before starting another paid round.
   let panelGone = false
@@ -144,6 +144,8 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     const citeEnabled = !page.truncated || pageSearchEnabled
     const options = { searchEnabled, citeEnabled, pageSearchEnabled }
     const tools = toolsFor(options)
+    // Before the history is read, so the prompt never sees the turns being replaced.
+    if (rewind > 0) await dropLastHistoryTurns(tabId, rewind)
     const history = await getHistory(tabId)
     const messages = assembleAgentMessages(page, history, question, options)
     const state: LoopState = {

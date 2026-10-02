@@ -39,7 +39,7 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== ASK_PORT_NAME) return
   port.onMessage.addListener((message: AskPortRequest) => {
     if (message.type !== 'START_ASK') return
-    runAgentLoop(port, message.tabId, message.question)
+    runAgentLoop(port, message.tabId, message.question, message.rewind)
   })
 })
 

@@ -3,6 +3,7 @@ import type { ExtractedPage } from '../../shared/types'
 import {
   appendHistoryTurns,
   clearTabData,
+  dropLastHistoryTurns,
   getExtractedPage,
   getFullPageContent,
   getHistory,
@@ -147,5 +148,21 @@ describe('clearTabData', () => {
     expect(await getExtractedPage(2)).toBeDefined()
     expect(await getFullPageContent(2)).toBe(fullText)
     expect(await getHistory(2)).toHaveLength(1)
+  })
+})
+
+describe('dropLastHistoryTurns', () => {
+  beforeEach(() => {
+    store = new Map()
+    quota = Infinity
+    vi.stubGlobal('chrome', { storage: { session } })
+  })
+
+  it('drops from the end, and stops at empty', async () => {
+    const turns = ['a', 'b', 'c', 'd'].map((content, i) => ({ role: i % 2 ? 'assistant' : 'user', content }) as const)
+    await appendHistoryTurns(1, [...turns])
+    expect((await dropLastHistoryTurns(1, 2)).map((t) => t.content)).toEqual(['a', 'b'])
+    expect(await dropLastHistoryTurns(1, 9)).toEqual([])
+    expect(await getHistory(1)).toEqual([])
   })
 })

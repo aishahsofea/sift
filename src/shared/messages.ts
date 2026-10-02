@@ -27,7 +27,9 @@ export type ContentScriptMessage =
 // one-shot sendMessage response can't express.
 export const ASK_PORT_NAME = 'sift-ask'
 
-export type AskPortRequest = { type: 'START_ASK'; tabId: number; question: string }
+// `rewind` drops that many turns from the end of stored history before asking: an edited
+// question replaces its turn and everything after it (#46).
+export type AskPortRequest = { type: 'START_ASK'; tabId: number; question: string; rewind?: number }
 
 export type AskPortMessage =
   | { type: 'ASK_STEP'; step: AgentStep }

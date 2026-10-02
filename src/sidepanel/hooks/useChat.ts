@@ -29,16 +29,19 @@ export function useChat(tabId: number | null) {
     }
   }, [tabId])
 
-  async function ask(question: string) {
+  // `editedIndex` is the user turn being replaced: it and every turn after it go, in the
+  // panel and (via `rewind`) in the stored history, so the two stay the same.
+  async function ask(question: string, editedIndex?: number) {
     const trimmed = question.trim()
     if (tabId === null || stream.active || !trimmed) return
 
+    const rewind = editedIndex === undefined ? 0 : Math.max(0, turns.length - editedIndex)
     setError(null)
-    setTurns((prev) => [...prev, { role: 'user', content: trimmed }])
+    setTurns((prev) => [...(rewind ? prev.slice(0, prev.length - rewind) : prev), { role: 'user', content: trimmed }])
 
     // One call for every question: the model decides inside the loop whether to
     // search, so there's no page-first pass to branch on out here.
-    const result = await stream.start(tabId, trimmed)
+    const result = await stream.start(tabId, trimmed, rewind || undefined)
     if (!result.ok) {
       setError(result.message)
       return
