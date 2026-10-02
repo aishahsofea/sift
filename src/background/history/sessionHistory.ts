@@ -65,6 +65,16 @@ export async function appendHistoryTurns(tabId: number, turns: ChatTurn[]): Prom
   return updated
 }
 
+// Drops the last `count` turns. Counted from the end, not by index: stored history is capped
+// at MAX_HISTORY_TURNS, so the panel's turn indexes can run ahead of it, but both end alike.
+// Shared by edit-and-resend (#46) and regenerate (#43).
+export async function dropLastHistoryTurns(tabId: number, count: number): Promise<ChatTurn[]> {
+  const existing = await getHistory(tabId)
+  const kept = existing.slice(0, Math.max(0, existing.length - count))
+  await chrome.storage.session.set({ [historyStorageKey(tabId)]: kept })
+  return kept
+}
+
 export async function clearHistory(tabId: number): Promise<void> {
   await chrome.storage.session.remove(historyStorageKey(tabId))
 }
