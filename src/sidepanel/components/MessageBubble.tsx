@@ -7,7 +7,7 @@ import { describeTruncatedAnswer } from '../truncationLabel'
 
 // A bare <table> can't scroll on its own, and the bubble it sits in is only 85% of a
 // narrow panel: wrap it so a wide table scrolls instead of pushing the panel sideways.
-function Table({ node: _node, ...props }: JSX.IntrinsicElements['table'] & ExtraProps) {
+export function Table({ node: _node, ...props }: JSX.IntrinsicElements['table'] & ExtraProps) {
   return (
     <div className="message-bubble-table-wrap">
       <table {...props} />

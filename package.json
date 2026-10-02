@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.15.23",
     "@mozilla/readability": "^0.6.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
