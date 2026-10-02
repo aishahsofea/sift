@@ -15,9 +15,10 @@ Nemotron model.
    [latest release](https://github.com/aishahsofea/sift/releases/latest) and unzip it.
 2. Go to `chrome://extensions`, enable **Developer mode**, click **Load unpacked**
    and select the unzipped folder.
-3. Open the extension's **Details → Extension options**, enter a Nebius and a
-   Tavily API key, and **Save**. Hackathon judges: the keys are in the private
-   testing instructions on the Devpost submission.
+3. No setup needed: the release build uses a shared demo server for the model and
+   search, with daily limits. (Optional: under **Details → Extension options**, add
+   your own Nebius and Tavily keys to call them directly. Page text and questions
+   pass through the demo server only while a key is blank.)
 4. Open any `http(s)://` page and click the Sift toolbar icon to ask a question.
 
 ## How it uses Nebius and NVIDIA

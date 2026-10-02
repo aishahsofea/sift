@@ -1,0 +1,14 @@
+name = "sift-demo-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Secrets, set once with `wrangler secret put`: NEBIUS_API_KEY, TAVILY_API_KEY.
+# Optional vars override the daily caps in src/policy.ts (DEFAULT_LIMITS).
+
+[[durable_objects.bindings]]
+name = "LIMITER"
+class_name = "Limiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Limiter"]

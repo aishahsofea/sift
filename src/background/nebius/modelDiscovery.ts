@@ -17,10 +17,10 @@ const NEMOTRON_CANDIDATES = [
 // Cached for the service worker's lifetime — cheap to keep, self-heals on restart.
 let cachedModelId: string | undefined
 
-export async function resolveNemotronModel(apiKey: string): Promise<string> {
+export async function resolveNemotronModel(apiKey: string, baseUrl = NEBIUS_BASE_URL): Promise<string> {
   if (cachedModelId) return cachedModelId
 
-  const res = await fetch(`${NEBIUS_BASE_URL}/models`, {
+  const res = await fetch(`${baseUrl}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   })
   if (!res.ok) {
