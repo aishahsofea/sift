@@ -38,6 +38,7 @@ function Message() {
   // assistant-ui adds an empty running assistant message the moment a question is sent;
   // the pending indicator covers that gap, so an empty bubble would double up.
   const isEmpty = useAuiState((s) => s.message.role === 'assistant' && s.message.parts.every((p) => p.type !== 'text' || !p.text))
+  const isLast = useAuiState((s) => s.message.isLast)
   const isEditing = useAuiState((s) => s.message.composer.isEditing)
   if (isEmpty) return null
 
@@ -102,6 +103,14 @@ function Message() {
               </Icon>
             </span>
           </ActionBarPrimitive.Copy>
+          {isLast && (
+            <ActionBarPrimitive.Reload className="message-action message-action-icon" aria-label="Regenerate answer" title="Regenerate answer">
+              <Icon>
+                <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                <path d="M21 3v5h-5" />
+              </Icon>
+            </ActionBarPrimitive.Reload>
+          )}
           <ActionBarPrimitive.ExportMarkdown className="message-action message-action-icon" aria-label="Export as Markdown" title="Export as Markdown">
             <Icon>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

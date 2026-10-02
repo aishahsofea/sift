@@ -19,10 +19,11 @@ interface Props {
   turns: ChatTurn[]
   isRunning: boolean
   onAsk: (question: string, editedIndex?: number) => void
+  onReload: (userIndex: number) => void
   children: ReactNode
 }
 
-export function SiftRuntimeProvider({ turns, isRunning, onAsk, children }: Props) {
+export function SiftRuntimeProvider({ turns, isRunning, onAsk, onReload, children }: Props) {
   const textOf = (message: AppendMessage) => message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
   const runtime = useExternalStoreRuntime<ChatTurn>({
     messages: turns,
@@ -32,6 +33,10 @@ export function SiftRuntimeProvider({ turns, isRunning, onAsk, children }: Props
     onEdit: async (message) => {
       const index = Number(message.sourceId?.replace('turn-', ''))
       onAsk(textOf(message), Number.isInteger(index) ? index : undefined)
+    },
+    onReload: async (parentId) => {
+      const index = Number(parentId?.replace('turn-', ''))
+      if (Number.isInteger(index)) onReload(index)
     },
   })
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
