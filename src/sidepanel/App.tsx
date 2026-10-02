@@ -8,6 +8,7 @@ import { TruncationNotice } from './components/TruncationNotice'
 import { UnreadablePageState } from './components/UnreadablePageState'
 import { useActiveTab } from './hooks/useActiveTab'
 import { useChat } from './hooks/useChat'
+import { buildConversationMarkdown, conversationFilename } from './conversationMarkdown'
 
 export default function App() {
   const { tabId, status } = useActiveTab()
@@ -21,16 +22,45 @@ export default function App() {
     })
   }, [])
 
+  const [copied, setCopied] = useState(false)
+
   const chatReady = status.state === 'ready' && nebiusConfigured === true
+
+  const conversation = () =>
+    status.state === 'ready' ? buildConversationMarkdown(status.page, turns) : ''
+
+  const copyConversation = async () => {
+    await navigator.clipboard.writeText(conversation())
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const downloadConversation = () => {
+    if (status.state !== 'ready') return
+    const url = URL.createObjectURL(new Blob([conversation()], { type: 'text/markdown' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = conversationFilename(status.page.title)
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <main>
       <header className="app-header">
         <h1>Sift</h1>
         {chatReady && turns.length > 0 && (
-          <button onClick={clear} className="clear-button">
-            Clear
-          </button>
+          <div className="header-actions">
+            <button onClick={copyConversation} className="clear-button">
+              {copied ? 'Copied' : 'Copy conversation'}
+            </button>
+            <button onClick={downloadConversation} className="clear-button">
+              Download .md
+            </button>
+            <button onClick={clear} className="clear-button">
+              Clear
+            </button>
+          </div>
         )}
       </header>
 
