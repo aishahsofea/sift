@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../shared/messages'
-import { ChatInput } from './components/ChatInput'
-import { ChatThread } from './components/ChatThread'
+import { AssistantComposer, AssistantThread } from './components/AssistantThread'
+import { SiftRuntimeProvider } from './components/SiftRuntimeProvider'
 import { EmptyChatState } from './components/EmptyChatState'
 import { MissingApiKeysState } from './components/MissingApiKeysState'
 import { TruncationNotice } from './components/TruncationNotice'
@@ -39,22 +39,22 @@ export default function App() {
       {status.state === 'ready' && nebiusConfigured === false && <MissingApiKeysState />}
 
       {chatReady && (
-        <>
+        <SiftRuntimeProvider turns={turns} isRunning={asking} onAsk={ask}>
           {status.page.truncated && (
             <TruncationNotice charsOmitted={status.page.charsOmitted} searchable={status.page.searchable === true} />
           )}
           {historyLoaded && turns.length === 0 ? (
             <EmptyChatState title={status.page.title} />
           ) : (
-            <ChatThread turns={turns} pendingLabel={pendingStepLabel} />
+            <AssistantThread pendingLabel={pendingStepLabel} />
           )}
           {error && (
             <p role="alert" className="chat-error">
               {error}
             </p>
           )}
-          <ChatInput onSend={ask} disabled={asking} />
-        </>
+          <AssistantComposer />
+        </SiftRuntimeProvider>
       )}
     </main>
   )
