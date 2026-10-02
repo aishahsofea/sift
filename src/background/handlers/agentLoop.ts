@@ -34,6 +34,7 @@ import {
 import { extractTavily, searchTavily } from '../tavily/client'
 import { scopeToDomain } from '../tavily/scopeToDomain'
 import { deriveSource } from './answerSource'
+import { stripCitationMarkers } from './stripMarkers'
 import { searchPage } from './searchPage'
 import {
   createTraceRecorder,
@@ -311,7 +312,7 @@ function mustQuoteFirst({ citeEnabled, state }: ToolContext): boolean {
 
 async function finish(context: ToolContext, tabId: number, question: string, content: string): Promise<void> {
   const { port, page, state, recorder } = context
-  const answer = content.trimEnd()
+  const answer = stripCitationMarkers(content).trimEnd()
   if (!answer) {
     throw new Error('Nebius returned no answer content.')
   }
