@@ -281,9 +281,17 @@ main {
   border-top: 1px solid #e0e0e0;
 }
 
-.chat-input input {
+.chat-input input,
+.chat-input textarea {
   flex: 1;
+  min-width: 0;
   padding: 0.5rem;
+  font: inherit;
+  resize: none;
+}
+
+.chat-input button {
+  flex: none;
 }
 
 .unreadable-page-state,
