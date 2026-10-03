@@ -37,6 +37,7 @@ export function useChat(tabId: number | null) {
     if (tabId === null || stream.active || !trimmed) return
 
     const { rewind, next } = replaceFrom(turns, trimmed, editedIndex)
+    const rewound = next.slice(0, -1)
     setError(null)
     setTurns(next)
 
@@ -44,7 +45,10 @@ export function useChat(tabId: number | null) {
     // search, so there's no page-first pass to branch on out here.
     const result = await stream.start(tabId, trimmed, rewind || undefined)
     if (!result.ok) {
-      setError(result.message)
+      // A stopped answer isn't stored, so the question goes too: the panel stays
+      // the same as history, which is what a later rewind counts against.
+      if ('stopped' in result) setTurns(rewound)
+      else setError(result.message)
       return
     }
     setTurns((prev) => [...prev, result.turn])
@@ -72,7 +76,7 @@ export function useChat(tabId: number | null) {
   const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
   const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null
 
-  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, reload, clear, historyLoaded }
+  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, reload, stop: stream.stop, clear, historyLoaded }
 }
 
 function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {

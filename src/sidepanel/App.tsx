@@ -12,7 +12,7 @@ import { buildConversationMarkdown, conversationFilename } from './conversationM
 
 export default function App() {
   const { tabId, status } = useActiveTab()
-  const { turns, asking, pendingStepLabel, error, ask, reload, clear, historyLoaded } = useChat(tabId)
+  const { turns, asking, pendingStepLabel, error, ask, reload, stop, clear, historyLoaded } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -87,7 +87,7 @@ export default function App() {
       {status.state === 'ready' && nebiusConfigured === false && <MissingApiKeysState />}
 
       {chatReady && (
-        <SiftRuntimeProvider turns={turns} isRunning={asking} onAsk={ask} onReload={reload}>
+        <SiftRuntimeProvider turns={turns} isRunning={asking} onAsk={ask} onReload={reload} onStop={stop}>
           {status.page.truncated && (
             <TruncationNotice charsOmitted={status.page.charsOmitted} searchable={status.page.searchable === true} />
           )}

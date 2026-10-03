@@ -1,13 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ASK_PORT_NAME, type AskPortMessage, type AskPortRequest } from '../../shared/messages'
 import type { AgentStep, ChatTurn } from '../../shared/types'
 
-export type AskResult = { ok: true; turn: ChatTurn } | { ok: false; message: string }
+export type AskResult = { ok: true; turn: ChatTurn } | { ok: false; message: string } | { ok: false; stopped: true }
 
 export function useAskStream() {
   const [active, setActive] = useState(false)
   const [text, setText] = useState('')
   const [step, setStep] = useState<AgentStep | null>(null)
+  const stopRef = useRef<(() => void) | null>(null)
 
   const start = useCallback((tabId: number, question: string, rewind?: number): Promise<AskResult> => {
     setActive(true)
@@ -21,8 +22,11 @@ export function useAskStream() {
         setActive(false)
         setStep(null)
         port.disconnect()
+        stopRef.current = null
         resolve(result)
       }
+      // Dropping the port is the signal: the background aborts its requests when it closes.
+      stopRef.current = () => settle({ ok: false, stopped: true })
 
       port.onMessage.addListener((message: AskPortMessage) => {
         switch (message.type) {
@@ -49,5 +53,7 @@ export function useAskStream() {
     })
   }, [])
 
-  return { active, text, step, start }
+  const stop = useCallback(() => stopRef.current?.(), [])
+
+  return { active, text, step, start, stop }
 }

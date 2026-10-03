@@ -80,6 +80,8 @@ interface LoopState {
 // Everything a tool call needs besides its own arguments.
 interface ToolContext {
   port: chrome.runtime.Port
+  /** Aborts when the panel disconnects (closed, or Stop pressed), cutting any request in flight. */
+  signal: AbortSignal
   page: ExtractedPage
   /** Absent when no Tavily key is configured: the web tools then refuse rather than run. */
   tavilyApiKey: string | undefined
@@ -98,11 +100,14 @@ interface ToolContext {
 }
 
 export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, question: string, rewind = 0): Promise<void> {
-  // The panel can close mid-loop (a search round takes seconds). Once it has, no
-  // one is listening, so stop before starting another paid round.
+  // The panel can close mid-loop (a search round takes seconds), or Stop can drop the
+  // port. Either way no one is listening: abort what's in flight and start no more paid
+  // rounds. Nothing is stored for a stopped answer.
   let panelGone = false
+  const abort = new AbortController()
   port.onDisconnect.addListener(() => {
     panelGone = true
+    abort.abort()
   })
 
   // Made before the try so every exit, the catch included, can leave a trace (#18).
@@ -163,7 +168,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     // A quote is checked against the whole page, not only the part the prompt holds:
     // the model can quote what search_page found there.
     const quotable = pageText(page, fullContent)
-    const context: ToolContext = { port, page, tavilyApiKey, tavilyBaseUrl, citeEnabled, pageSearchEnabled, fullContent, quotable, state, recorder }
+    const context: ToolContext = { port, signal: abort.signal, page, tavilyApiKey, tavilyBaseUrl, citeEnabled, pageSearchEnabled, fullContent, quotable, state, recorder }
 
     recorder.page = {
       length: page.content.length,
@@ -218,6 +223,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       const roundStart = Date.now()
       const turn = await streamAgentTurn(nebiusApiKey, turnMessages, {
         baseUrl: nebiusBaseUrl,
+        signal: abort.signal,
         tools: forced || !roundTools.length ? undefined : roundTools,
         // An answer that is about to be thrown away is not shown while it is written.
         onContent: (delta) => {
@@ -286,6 +292,11 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
       record({ toolCalls: traced })
     }
   } catch (error) {
+    if (panelGone) {
+      // The abort surfaces as a thrown fetch error; it is the stop, not a failure.
+      await persistTrace(recorder, { status: 'panel-closed' })
+      return
+    }
     console.error(`[Sift] agent loop failed for tab ${tabId}:`, error)
     await persistTrace(recorder, { status: 'error' })
     post(port, {
@@ -449,7 +460,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
     const domain = scopeToDomain(page.url)
     post(port, { type: 'ASK_STEP', step: { kind: 'searching', domain, query: call.args.query } })
 
-    const results = await searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl)
+    const results = await searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl, context.signal)
     for (const result of results) state.allowedUrls.add(result.url)
     if (results.length) state.usedWeb = true
     return { results, ...(citeEnabled ? { note: SEARCH_NOTE } : {}) }
@@ -463,7 +474,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   }
 
   post(port, { type: 'ASK_STEP', step: { kind: 'reading', url: call.args.url } })
-  const raw = await extractTavily(tavilyApiKey, call.args.url, tavilyBaseUrl)
+  const raw = await extractTavily(tavilyApiKey, call.args.url, tavilyBaseUrl, context.signal)
   if (!raw) {
     return { error: "That page couldn't be read. Use the search snippets, or search again." }
   }

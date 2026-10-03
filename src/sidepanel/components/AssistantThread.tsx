@@ -139,7 +139,12 @@ export function AssistantComposer() {
   return (
     <ComposerPrimitive.Root className="chat-input">
       <ComposerPrimitive.Input placeholder="Ask about this page…" />
-      <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
+      <ThreadPrimitive.If running={false}>
+        <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
+      </ThreadPrimitive.If>
+      <ThreadPrimitive.If running>
+        <ComposerPrimitive.Cancel>Stop</ComposerPrimitive.Cancel>
+      </ThreadPrimitive.If>
     </ComposerPrimitive.Root>
   )
 }

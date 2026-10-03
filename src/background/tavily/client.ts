@@ -13,7 +13,7 @@ export interface TavilySearchResult {
 // never model input (ADR 0001/0004). No page title is folded in any more: Phase 4
 // needed that to rescue a bare user question, but the model is now instructed to
 // write a self-contained query, and appending a title to it costs relevance.
-export async function searchTavily(apiKey: string, query: string, pageUrl: string, baseUrl = TAVILY_BASE_URL): Promise<TavilySearchResult[]> {
+export async function searchTavily(apiKey: string, query: string, pageUrl: string, baseUrl = TAVILY_BASE_URL, signal?: AbortSignal): Promise<TavilySearchResult[]> {
   const res = await withRetry(`${baseUrl}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -24,6 +24,7 @@ export async function searchTavily(apiKey: string, query: string, pageUrl: strin
       max_results: 5,
       include_domains: [scopeToDomain(pageUrl)],
     }),
+    signal,
   })
 
   const text = await res.text()
@@ -40,11 +41,12 @@ export async function searchTavily(apiKey: string, query: string, pageUrl: strin
 // the caller (agentLoop.ts's runTool) is what decides how much of it fits in a tool
 // result and keeps the rest for search_page to reach (#7) — this function has no
 // opinion on that, the same way it has none on how the tab's own page is truncated.
-export async function extractTavily(apiKey: string, url: string, baseUrl = TAVILY_BASE_URL): Promise<string> {
+export async function extractTavily(apiKey: string, url: string, baseUrl = TAVILY_BASE_URL, signal?: AbortSignal): Promise<string> {
   const res = await withRetry(`${baseUrl}/extract`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key: apiKey, urls: [url] }),
+    signal,
   })
 
   const text = await res.text()

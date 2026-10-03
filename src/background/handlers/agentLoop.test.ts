@@ -1167,6 +1167,30 @@ describe('a trace for every exit (#18)', () => {
     expect(traced().map((t) => t.status)).toEqual(['panel-closed'])
   })
 
+  it('aborts the in-flight request and stores nothing when the panel disconnects mid-round', async () => {
+    let disconnect = () => {}
+    const posted: AskPortMessage[] = []
+    const port = {
+      postMessage: (message: AskPortMessage) => posted.push(message),
+      onDisconnect: { addListener: (listener: () => void) => (disconnect = listener) },
+    } as unknown as chrome.runtime.Port
+    let seen: AbortSignal | undefined
+    vi.mocked(streamAgentTurn).mockImplementation(
+      (_key, _messages, { signal }) =>
+        new Promise((_resolve, reject) => {
+          seen = signal
+          signal?.addEventListener('abort', () => reject(new Error('aborted')))
+          disconnect()
+        }),
+    )
+
+    await runAgentLoop(port, 1, 'How many beta testers were there?')
+
+    expect(seen?.aborted).toBe(true)
+    expect(posted).toEqual([])
+    expect(traced().map((t) => t.status)).toEqual(['panel-closed'])
+  })
+
   it('records each round: a verified quote, then the answer', async () => {
     scriptModel(
       { ...cite(QUOTE), model: 'nemotron', usage: { promptTokens: 10, completionTokens: 2 }, finishReason: 'tool_calls', reasoning: 'hmm' },
