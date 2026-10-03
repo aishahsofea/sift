@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../../shared/messages'
 import type { ChatTurn } from '../../shared/types'
 import { describeStep } from '../stepLabel'
+import { reloadTarget, replaceFrom } from '../rewind'
 import { useAskStream } from './useAskStream'
 
 export function useChat(tabId: number | null) {
@@ -35,9 +36,9 @@ export function useChat(tabId: number | null) {
     const trimmed = question.trim()
     if (tabId === null || stream.active || !trimmed) return
 
-    const rewind = editedIndex === undefined ? 0 : Math.max(0, turns.length - editedIndex)
+    const { rewind, next } = replaceFrom(turns, trimmed, editedIndex)
     setError(null)
-    setTurns((prev) => [...(rewind ? prev.slice(0, prev.length - rewind) : prev), { role: 'user', content: trimmed }])
+    setTurns(next)
 
     // One call for every question: the model decides inside the loop whether to
     // search, so there's no page-first pass to branch on out here.
@@ -47,6 +48,12 @@ export function useChat(tabId: number | null) {
       return
     }
     setTurns((prev) => [...prev, result.turn])
+  }
+
+  // Regenerate: the same path as an edit that changes nothing.
+  async function reload(userIndex: number) {
+    const target = reloadTarget(turns, userIndex)
+    if (target) await ask(target.question, target.index)
   }
 
   async function clear() {
@@ -65,7 +72,7 @@ export function useChat(tabId: number | null) {
   const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
   const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null
 
-  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, clear, historyLoaded }
+  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, reload, clear, historyLoaded }
 }
 
 function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {
