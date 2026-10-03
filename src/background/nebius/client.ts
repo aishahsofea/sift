@@ -27,6 +27,8 @@ interface StreamAgentTurnOptions {
   tools?: unknown
   /** The demo proxy's /nebius path when the key is an install ID; the real API otherwise. */
   baseUrl?: string
+  /** Aborts the request and the stream read, e.g. when the user stops the answer. */
+  signal?: AbortSignal
   /** Fires per visible-answer delta. Never fires with leading or empty whitespace. */
   onContent: (delta: string) => void
 }
@@ -37,7 +39,7 @@ interface StreamAgentTurnOptions {
 export async function streamAgentTurn(
   apiKey: string,
   messages: ChatMessage[],
-  { tools, baseUrl = NEBIUS_BASE_URL, onContent }: StreamAgentTurnOptions,
+  { tools, baseUrl = NEBIUS_BASE_URL, signal, onContent }: StreamAgentTurnOptions,
 ): Promise<AgentTurn> {
   // Marks this round's start for `timing` below — before model resolution and the POST,
   // both of which are real, attributable latency on a cold service worker.
@@ -49,6 +51,8 @@ export async function streamAgentTurn(
   // notice. Re-armed below on every sign of life; a real answer can stream past the
   // timeout as long as it keeps sending.
   const controller = new AbortController()
+  signal?.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+  if (signal?.aborted) controller.abort(signal.reason)
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   const armIdleTimer = () => {
     clearTimeout(idleTimer)

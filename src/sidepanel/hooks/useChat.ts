@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../../shared/messages'
 import type { ChatTurn } from '../../shared/types'
 import { describeStep } from '../stepLabel'
@@ -10,6 +10,7 @@ export function useChat(tabId: number | null) {
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const stream = useAskStream()
+  const lastQuestion = useRef('')
 
   useEffect(() => {
     if (tabId === null) return
@@ -37,14 +38,19 @@ export function useChat(tabId: number | null) {
     if (tabId === null || stream.active || !trimmed) return
 
     const { rewind, next } = replaceFrom(turns, trimmed, editedIndex)
+    const rewound = next.slice(0, -1)
     setError(null)
     setTurns(next)
+    lastQuestion.current = trimmed
 
     // One call for every question: the model decides inside the loop whether to
     // search, so there's no page-first pass to branch on out here.
     const result = await stream.start(tabId, trimmed, rewind || undefined)
     if (!result.ok) {
-      setError(result.message)
+      // A stopped answer isn't stored, so the question goes too: the panel stays
+      // the same as history, which is what a later rewind counts against.
+      if ('stopped' in result) setTurns(rewound)
+      else setError(result.message)
       return
     }
     setTurns((prev) => [...prev, result.turn])
@@ -54,6 +60,12 @@ export function useChat(tabId: number | null) {
   async function reload(userIndex: number) {
     const target = reloadTarget(turns, userIndex)
     if (target) await ask(target.question, target.index)
+  }
+
+  // Returns the question that was running so the panel can put it back in the composer.
+  function stop(): string {
+    stream.stop()
+    return lastQuestion.current
   }
 
   async function clear() {
@@ -72,7 +84,7 @@ export function useChat(tabId: number | null) {
   const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
   const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null
 
-  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, reload, clear, historyLoaded }
+  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, reload, stop, clear, historyLoaded }
 }
 
 function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {

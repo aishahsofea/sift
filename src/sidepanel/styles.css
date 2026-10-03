@@ -396,3 +396,9 @@ main {
 .message-action .icon-copy {
   display: inline-flex;
 }
+
+.chat-input .stop-button {
+  display: inline-flex;
+  align-items: center;
+  color: #d93025;
+}
