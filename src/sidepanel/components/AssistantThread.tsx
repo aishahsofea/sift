@@ -143,7 +143,11 @@ export function AssistantComposer() {
         <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running>
-        <ComposerPrimitive.Cancel>Stop</ComposerPrimitive.Cancel>
+        <ComposerPrimitive.Cancel className="stop-button" aria-label="Stop" title="Stop">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <rect x="5" y="5" width="14" height="14" rx="2" />
+          </svg>
+        </ComposerPrimitive.Cancel>
       </ThreadPrimitive.If>
     </ComposerPrimitive.Root>
   )
