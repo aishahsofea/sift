@@ -22,9 +22,7 @@ async function listModels() {
   return body.data.map((m) => m.id);
 }
 
-// Preferred Nemotron chat models, in order. Every ID here was checked against
-// a live GET /v1/models; anything else on the account is left to the fallback
-// further down. Same list as src/background/nebius/modelDiscovery.ts.
+// Preferred Nemotron models in order, each checked against a live GET /v1/models; same list as src/background/nebius/modelDiscovery.ts.
 const NEMOTRON_CANDIDATES = [
   "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
   "nvidia/nemotron-3-super-120b-a12b",
@@ -69,8 +67,7 @@ const choice = result.choices[0];
 console.log("--- raw message object ---");
 console.log(JSON.stringify(choice.message, null, 2));
 
-// Field name varies by model/wrapper — Nebius's Nemotron Nano returns
-// `reasoning`, not the `reasoning_content` some OpenAI-compatible wrappers use.
+// Nemotron Nano returns `reasoning`, not `reasoning_content`.
 const reasoning = choice.message.reasoning_content ?? choice.message.reasoning;
 if (reasoning) {
   console.log("\n(!) This model splits output into a separate reasoning field.");

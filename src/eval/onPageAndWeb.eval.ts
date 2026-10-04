@@ -11,8 +11,7 @@ import {
   pricingResults,
 } from './fixtures/fictionalProductPage'
 
-// Real runAgentLoop, with only the same three seams agentLoop.test.ts mocks faked.
-// streamAgentTurn (Nebius) is genuinely live in every case below (issue #3).
+// Real runAgentLoop with the same three seams faked as agentLoop.test.ts; streamAgentTurn is live (issue #3).
 vi.mock('../background/history/sessionHistory', () => ({
   getExtractedPage: vi.fn(),
   getFullPageContent: vi.fn(),
@@ -29,10 +28,7 @@ vi.mock('../background/keys', () => ({
 }))
 vi.mock('../background/tavily/client', () => ({ searchTavily: vi.fn(), extractTavily: vi.fn() }))
 
-// A fake, non-empty Tavily key: search_site/fetch_page just need to be *offered*
-// (searchEnabled = Boolean(tavilyApiKey)); the mocked tavily/client above means the
-// real Tavily API is never called in this file, so the value itself is never sent
-// anywhere.
+// Non-empty so search_site/fetch_page are offered; the mocked tavily/client means the key is never sent.
 const FAKE_TAVILY_KEY = 'eval-fake-tavily-key'
 
 afterAll(() => {
@@ -40,9 +36,7 @@ afterAll(() => {
 })
 
 describe('on-page: answerable from the page alone', () => {
-  // No Tavily key: matches how ADR 0005/0006's own real-page diagnostics were run,
-  // and makes "no tool but cite_page could possibly run" a structural fact, not just
-  // an assertion below.
+  // No Tavily key, as in ADR 0005/0006's diagnostics, so only cite_page can run.
   for (let i = 0; i < getRepeatCount(); i++) {
     it(`cites the page and answers, run ${i + 1}`, async () => {
       const { turn, error, posted, elapsedMs } = await runCase({ page, question: onPageQuestion })
@@ -74,9 +68,7 @@ describe('off-page: needs a search', () => {
       expect(error, error).toBeUndefined()
       expect(turn?.source, JSON.stringify(turn)).toBe('web')
       expect(stepKinds).toContain('searching')
-      // Soft, not hard: ADR 0005 measured this at 0/7 on the fixture, but a stray
-      // cite_page digression that still lands on the right label is not a regression
-      // worth failing the run over — logged for the summary, not asserted on.
+      // Soft: ADR 0005 measured 0/7, and a stray cite_page call that lands on the right label isn't worth failing; logged, not asserted.
       if (stepKinds.includes('citing')) {
         console.warn(`[eval] off-page run ${i + 1} called cite_page too (label was still ${turn?.source})`)
       }
@@ -97,18 +89,9 @@ describe('partial: needs the page and the web together', () => {
       recordRun({ category: 'partial', label: partialQuestion, turn, error, elapsedMs, stepKinds })
 
       expect(error, error).toBeUndefined()
-      // Not always 'page+web': confirmed live (2026-09-27) the model sometimes answers
-      // the page-side fact from its own reading of the page content without calling
-      // cite_page for it (ADR 0005: absence of a tool call is not evidence of page
-      // grounding, so that half of the answer correctly earns no credit) — 'web' alone
-      // is still correct there, just less complete provenance, not a wrong answer.
+      // 'web' alone is also correct: the model sometimes answers the page fact without cite_page (live 2026-09-27), which earns no page credit (ADR 0005).
       expect(['web', 'page+web'], JSON.stringify(turn)).toContain(turn?.source)
-      // Only checked when a page quote is actually claimed: cite_page lets the model quote
-      // any verbatim span it chooses, not necessarily the whole BETA_TESTER_QUOTE sentence
-      // — confirmed live it reliably quotes a shorter or longer real substring instead
-      // (e.g. "2,400 beta testers"). verifyQuotes already guarantees anything in
-      // turn.quotes is a real substring of the page; checking for the key figure is what
-      // actually matters here.
+      // Only when a page quote is claimed: the model quotes a shorter or longer real substring (e.g. "2,400 beta testers"), so check the key figure, not the whole sentence.
       if (turn?.source === 'page+web') {
         expect(turn?.quotes?.some((q) => q.includes('2,400')), JSON.stringify(turn)).toBe(true)
       }

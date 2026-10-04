@@ -8,10 +8,7 @@ import {
 } from '../../eval/fixtures/transformerCircuitsMethods'
 import { searchPage } from './searchPage'
 
-// Queries a model might write for #27's question, written by hand (not sampled from the
-// model) over the real methods paper, whose thresholds sit in Appendix F past the cut.
-// The issue's own 16 weren't recorded, so this is the closest set, and its baseline is
-// measured here rather than taken from the issue.
+// Hand-written queries a model might write for #27's question over the real methods paper (thresholds in Appendix F past the cut); the issue's own 16 weren't recorded, so the baseline is measured here.
 const QUERIES = [
   'pruning threshold',
   'pruning thresholds',

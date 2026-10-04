@@ -1,32 +1,4 @@
-// Spike: verify native tool calling on Nebius Token Factory + Nemotron before
-// building Sift's agent loop, where the model decides on its own whether to
-// call search_site / fetch_page, reads the results, maybe searches again, and
-// only then answers. Checked live rather than assumed:
-//   - tool calls come back parsed in message.tool_calls, not as raw text
-//   - streamed tool-call arguments arrive in fragments that must be joined
-//   - multi-round conversations with role: "tool" messages are accepted
-//   - which way of forcing a final answer at the round cap actually works
-//   - latency, prompt tokens and prefix caching at a realistic page size
-// It also checks the third tool, cite_page (ADR 0005, #10), where the model
-// quotes the page before answering from it and the handler verifies each quote:
-//   - an array argument survives Nemotron's tool-call parser and streaming
-//   - the model calls it before answering an on-page question, and not before searching
-//   - its quotes are copied verbatim (the verification pass rate)
-//   - a rejected quote comes back as a tool-role error the model recovers from
-//   - what the extra round costs, against the same cases with --no-cite
-// And the fourth, search_page (ADR 0006, #11), for a page too long for the prompt: the
-// prompt holds its start, search_page looks through the rest, and cite_page checks a
-// quote against all of it:
-//   - the model searches the cut-off part for a section it can only see named and summarized
-//   - it then quotes what it found, and the quote verifies against the whole page
-//   - it does not search when the question is about the part it was given
-//   - the prefix caching ADR 0001 measured still holds on a cut page across rounds
-// And escalation past a thin search snippet (#7): the model reaches for fetch_page when a
-// snippet isn't enough, and, when that fetched page is itself too long, reaches for
-// search_page to get past its own cut — without cite_page trying to check either one.
-// Both search tools are stubbed against a fictional site (loomkit.example), so
-// every expected answer is only knowable from the page or a stubbed tool result,
-// never from the model's own knowledge. No Tavily calls are made.
+// Live spike of native tool calling on Nebius + Nemotron (ADR 0001, 0005, 0006, #7) against a fictional site (loomkit.example) with stubbed tools, so answers can't come from model knowledge. No Tavily calls.
 //
 // Run with:
 //   npm run test:tools                         # default Nemotron model
@@ -39,12 +11,9 @@
 
 const BASE_URL = "https://api.tokenfactory.nebius.com/v1";
 const REQUEST_TIMEOUT_MS = 180_000;
-// Round cap from the agent design: once the model has used tools this many
-// rounds, the next call is forced to answer.
+// Once the model has used this many tool rounds, the next call is forced to answer.
 const MAX_TOOL_ROUNDS = 3;
-// Mirrors FETCHED_PAGE_CHAR_LIMIT in src/shared/constants.ts: how much of a fetch_page
-// result the tool result itself carries before it is cut and the rest left for
-// search_page to reach (#7).
+// Mirrors FETCHED_PAGE_CHAR_LIMIT in src/shared/constants.ts (#7).
 const FETCH_PAGE_CHAR_LIMIT = 20_000;
 
 const apiKey = process.env.NEBIUS_API_KEY;
@@ -98,9 +67,7 @@ const SEARCH_TOOLS = [
   },
 ];
 
-// The page-side tool. Needs no network, so it is offered whether or not search
-// is. The wording is verified prompt surface like the rest: change it here and in
-// src/background/nebius/tools.ts together, then re-run this script.
+// Offered whether or not search is; change the wording here and in src/background/nebius/tools.ts together.
 const CITE_TOOL = {
   type: "function",
   function: {
@@ -122,9 +89,7 @@ const CITE_TOOL = {
   },
 };
 
-// The tool for a page too long for the prompt: a keyword search of the whole page, with
-// slots of its own for the part that was cut off, run in the extension. Mirror
-// SEARCH_PAGE_TOOL in src/background/nebius/tools.ts.
+// Mirrors SEARCH_PAGE_TOOL in src/background/nebius/tools.ts.
 const SEARCH_PAGE_TOOL = {
   type: "function",
   function: {
@@ -144,8 +109,7 @@ const SEARCH_PAGE_TOOL = {
   },
 };
 
-// cite_page as offered next to search_page: a passage search_page returned can be
-// cited, and a quote is checked against the whole page. Mirror CITE_TOOL_CUT.
+// Mirrors CITE_TOOL_CUT.
 const CITE_TOOL_CUT = {
   ...CITE_TOOL,
   function: {
@@ -169,9 +133,7 @@ const ALL_TOOLS = [...SEARCH_TOOLS, SEARCH_PAGE_TOOL, CITE_TOOL];
 // A case whose page reaches the model cut short, with the rest kept (ADR 0006).
 const isCut = (testCase) => Boolean(testCase.page?.truncated);
 
-// Which tools a case is offered: search unless the case turns it off (the
-// no-Tavily-key path), search_page on a cut page, and cite_page unless the run is
-// the --no-cite baseline.
+// Search unless the case turns it off, search_page on a cut page, cite_page unless --no-cite.
 function toolsFor(testCase) {
   return [
     ...(testCase.noSearch ? [] : SEARCH_TOOLS),
@@ -193,20 +155,10 @@ const REQUIRED_ARGS = Object.fromEntries(
   ]),
 );
 
-// Ways to force the final answer once the round cap is hit. Verified on
-// Nemotron 3 Nano (2026-09-23, 5 runs each): with tool_choice "none", or with
-// tools omitted, the model still writes a tool call, which comes back as raw
-// <tool_call> markup in content every time. Only omitting tools plus a nudge
-// message gave a clean answer (5/5). The nudge is a transient user message for
-// that one call, never kept in history. The two rejected strategies only run
-// with --only=force, to recheck them on another model.
+// Verified on Nemotron 3 Nano (2026-09-23, 5 runs each): tool_choice "none" or omitted tools still yields raw <tool_call> markup; only omitting tools plus a nudge gave a clean answer (5/5). The rejected strategies run only with --only=force.
 const FORCE_NUDGE =
   "You've used all your searches. Answer now from the page and the results above. If they don't cover the question, say you couldn't find it.";
-// On a whole page the model has been told to quote before it answers, so with the tools
-// off it reached for cite_page anyway, and the loop ended in an error. This one names
-// cite_page and says no tool at all. FORCE_RETRY is added if the forced round still comes
-// back as a tool call, once. Mirror FORCE_NUDGE_CITE / FORCE_RETRY in
-// src/background/nebius/tools.ts.
+// Names cite_page, since with tools off the model reached for it anyway. Mirrors FORCE_NUDGE_CITE / FORCE_RETRY in tools.ts.
 const FORCE_NUDGE_CITE =
   "You've used all your tool calls, and cite_page is no longer available. Answer now, in plain text, from the page and the results above. If they don't cover the question, say you couldn't find it.";
 const FORCE_RETRY = "Do not call any tool. Write your answer as plain text now.";
@@ -220,9 +172,7 @@ const FORCE_STRATEGIES = {
 };
 const DEFAULT_FORCE_STRATEGY = "omit-tools+nudge";
 
-// Tool-call syntax that should have been parsed into message.tool_calls. In
-// content it would render raw markup as the answer; in the reasoning of a
-// round with no tool_calls it points at a missed server-side parse.
+// Tool-call syntax that should have been parsed into message.tool_calls; in the reasoning of a no-tool-call round it means a missed server-side parse.
 const TOOL_MARKUP = /<\/?tool_?call>|<TOOLCALL>|<function[=\s>]/i;
 const TOOL_JSON = /"name"\s*:\s*"(search_site|fetch_page|cite_page|search_page)"/;
 
@@ -249,10 +199,7 @@ const PAGE = {
   ].join("\n"),
 };
 
-// The same page with the typography real articles have: curly quotes and
-// apostrophes, an em dash, an ellipsis character, a non-breaking hyphen. A quote is
-// verified against the page text as written, so whether the model copies these
-// faithfully decides how often a good answer would be labelled unverified.
+// Real typography (curly quotes, em dash, ellipsis, non-breaking hyphen): quotes verify against the page as written, so faithful copying decides how often good answers read as unverified.
 const TYPO_PAGE = {
   ...PAGE,
   content: [
@@ -262,11 +209,7 @@ const TYPO_PAGE = {
   ].join("\n"),
 };
 
-// A page longer than the prompt holds (ADR 0006): a postmortem whose contents and summary
-// name and summarize section 5, and whose section 5 (where any real answer is) is past the
-// cut. `content` is the head, all the prompt holds; `full` is the page as kept, which a quote
-// is checked against and search_page looks through. The summary is in the head on purpose: it
-// is the state #5 left the model in, enough to know the section exists and not enough to answer.
+// Page longer than the prompt (ADR 0006): `content` is the head, `full` the page as kept; the head names and summarizes section 5, whose body is past the cut (the #5 state).
 const CUT_HEAD = [
   "The Loomkit Sync Incident: a postmortem",
   "By Dana Reyes, co-founder. Published April 9, 2026.",
@@ -323,10 +266,7 @@ const PRICE = /17\.50/;
 const MADE_UP_PRICE = /\$\s?\d/;
 const PRICE_QUESTION = "How much does the Loomkit Pro plan cost?";
 
-// A page reached only via fetch_page, padded past FETCH_PAGE_CHAR_LIMIT so fetch_page
-// itself cuts it (#7): the snippet names the topic but not the number, and the number
-// is past where the fetch's own cut falls, so only fetch_page, then search_page on what
-// it returned, can reach it — the same shape as CUT_PAGE, one tool over.
+// Reached only via fetch_page, padded past FETCH_PAGE_CHAR_LIMIT so the number is past fetch_page's own cut (#7).
 const PRUNING_URL = "https://loomkit.example/help/board-pruning";
 const PRUNING_HEAD = "How Loomkit prunes inactive boards\n\nBoards that stop getting used are archived automatically.\n";
 const PRUNING_TAIL = "\nA board is pruned once its inactivity score passes a threshold of 0.87.";
@@ -334,12 +274,7 @@ const BIG_PRUNING_PAGE = padCut({ content: PRUNING_HEAD, full: PRUNING_HEAD + PR
 const PRUNING_SNIPPET = "An overview of how Loomkit decides a board has gone stale and archives it.";
 const PRUNING_SCORE = /0\.87/;
 
-// #7's shape on the fictional site: the search snippet half-answers the question (it names
-// the mechanism, not the score), so answering from it is tempting, and the page has the rest.
-// Measured 2026-09-28, 12 runs each: the model read the page 5 times and answered from the
-// snippet 7 times, on the earlier SEARCH_NOTE and on the reworded one alike. The rewording
-// moves something else, whether a snippet that lacks the answer gets the page read (ADR 0009).
-// No snippet-based answer asserted anything only the page says.
+// #7's shape: the snippet names the mechanism, not the score. Measured 2026-09-28, 12 runs each: page read 5 times, snippet answered 7, on old and reworded SEARCH_NOTE alike (ADR 0009).
 const PARTIAL_URL = "https://loomkit.example/help/board-archiving";
 const PARTIAL_SNIPPET = "Loomkit automatically archives boards that have gone inactive. Archiving is based on how recently a board was edited.";
 const PARTIAL_PAGE = [
@@ -380,8 +315,7 @@ const RESULTS = {
   ],
 };
 
-// fetch_page contents: each result's snippet, except the full pricing page and the
-// pruning help page (too long for its own snippet either way).
+// fetch_page contents: each result's snippet, except the full pricing page and the pruning help page.
 const FULL_PAGES = {
   ...Object.fromEntries(Object.values(RESULTS).flat().map((r) => [r.url, r.content])),
   [PRICING_URL]: PRICING_TEXT,
@@ -390,54 +324,42 @@ const FULL_PAGES = {
 };
 
 // ---------------------------------------------------------------------------
-// cite_page: the check the real handler runs (src/background/handlers/verifyQuotes.ts),
-// reimplemented here like everything else in this standalone script.
+// cite_page: reimplements the check in src/background/handlers/verifyQuotes.ts.
 
 // Below this a "quote" matches almost any page and proves nothing.
 const MIN_QUOTE_CHARS = 10;
 const collapse = (text) => text.replace(/\s+/g, " ").trim();
 
-// The page as the model saw it: the title and content the system prompt shows. On a cut
-// page, all of it, not only the start the prompt holds: a quote can come from what
-// search_page found (ADR 0006).
+// The title and content the prompt shows; on a cut page all of it, since a quote can come from search_page (ADR 0006).
 const pageText = (page) => [page.title, page.full ?? page.content].join("\n");
 
 const RECOVERY_HINT =
   "Copy each passage exactly as it appears in the page content. If the page doesn't say it, don't cite it. Search results can't be cited.";
-// Once one quote has verified the label has what it needs, so the result says to stop
-// (on real pages the model kept citing after every quote had verified). Mirrors
-// CITE_DONE_NOTE / CITE_PARTIAL_NOTE / CITE_NUDGE in src/background/nebius/tools.ts.
+// Once one quote verifies the result says to stop. Mirrors CITE_DONE_NOTE / CITE_PARTIAL_NOTE / CITE_NUDGE in tools.ts.
 const CITE_DONE_NOTE = "All of these are on the page. Answer now from them, in your own words. Don't call cite_page again.";
 const CITE_PARTIAL_NOTE = "Only the verified passages are on the page. Answer now using only those, and don't call cite_page again.";
-// Sent, for that one request, when the model answered a page question without calling
-// cite_page: the answer is discarded and this asks again.
+// Sent for one request when a page question was answered without cite_page.
 const CITE_NUDGE =
   "Before you answer, call cite_page with up to three short passages from the page content that support your answer, copied word for word. If the page content doesn't cover the question, say so instead.";
-// The same ask on a cut page whose rest search_page can reach, and what search_page's result
-// says. Mirror CITE_NUDGE_CUT / PAGE_SEARCH_NOTE / PAGE_SEARCH_EMPTY_NOTE in tools.ts.
+// Same ask on a cut page, plus search_page's result notes. Mirror CITE_NUDGE_CUT / PAGE_SEARCH_NOTE / PAGE_SEARCH_EMPTY_NOTE.
 const CITE_NUDGE_CUT =
   "Before you answer, call cite_page with up to three short passages from the page that support your answer, copied word for word. If the passages are in the part that is cut off, call search_page for them first. If the page doesn't cover the question, say so instead.";
 const PAGE_SEARCH_NOTE =
   "These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.";
 const PAGE_SEARCH_EMPTY_NOTE =
   "Nothing on the page matches those words. Search again with different words, or answer from what you have.";
-// search_page's notes when it searched a fetched page's cut-off text instead of the page
-// the user is viewing (#7): not citable, so the shape is SEARCH_NOTE/FETCH_NOTE's, not
-// PAGE_SEARCH_NOTE's. Mirror PAGE_SEARCH_NOTE_FETCHED / PAGE_SEARCH_EMPTY_NOTE_FETCHED.
+// search_page notes for a fetched page: not citable, so SEARCH_NOTE's shape. Mirror PAGE_SEARCH_NOTE_FETCHED / PAGE_SEARCH_EMPTY_NOTE_FETCHED.
 const PAGE_SEARCH_NOTE_FETCHED =
   "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words.";
 const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
   "Nothing past the start of the fetched page matches those words. Search again with different words, or answer from what you have.";
-// FETCH_NOTE's cut counterpart (#7), shown whether or not cite_page is on offer: the
-// only place the model learns a fetch was incomplete and search_page can reach the rest.
-// Mirror FETCH_NOTE_CUT in src/background/nebius/tools.ts.
+// Mirrors FETCH_NOTE_CUT in tools.ts, shown whether or not cite_page is offered.
 function FETCH_NOTE_CUT(charsOmitted) {
   const omitted = charsOmitted.toLocaleString("en-US");
   return `This is the fetched page, not the page content the user is viewing, so cite_page can't check it either way. It is cut off too: its last ${omitted} characters are not included. If it doesn't have the answer, call search_page with words from the missing part to reach it.`;
 }
 
-// Checks every quote against the page. `injectRejection` fails the whole call
-// regardless, to see how the model reacts to an error it can't have caused.
+// `injectRejection` fails the whole call, to see how the model handles an error it didn't cause.
 function citePage(page, quotes, { injectRejection = false } = {}) {
   const haystack = collapse(pageText(page));
   const verified = [];
@@ -455,11 +377,7 @@ function citePage(page, quotes, { injectRejection = false } = {}) {
   return { verified, errors };
 }
 
-// search_page: reimplemented crudely for the spike (the real one is BM25 over windows,
-// src/background/handlers/searchPage.ts). What this measures is what the model does with
-// a result, not the ranking: the paragraphs of the whole page that share words with the
-// query, best first, each with where it starts, with two slots held for the part that was
-// cut off before rank fills the rest, as the real one does.
+// Crude stand-in for searchPage.ts (BM25): paragraphs sharing words with the query, best first, with two slots held for the cut-off part. Measures what the model does with a result, not ranking.
 function searchPageStub(page, query) {
   const stem = (word) => word.toLowerCase().replace(/s$/, "");
   const words = (text) => (text.match(/[\p{L}\p{N}]+/gu) ?? []).map(stem);
@@ -483,9 +401,7 @@ function searchPageStub(page, query) {
   return chosen.sort((a, b) => b.score - a.score).map(({ offset, text }) => ({ offset, text }));
 }
 
-// The checks every cut-page case shares (ADR 0006): did it search the part it can't see,
-// did it quote, and did a quote come from that part. `expectSearch: false` is the case
-// where the head answers and searching would be a wasted round.
+// Shared cut-page checks (ADR 0006): searched the unseen part, quoted, and quoted from it; `expectSearch: false` is where the head answers.
 function checkCutPage(run, c, page, { expectSearch = true } = {}) {
   const { citations, pageSearches, pagePassages, pageQueries } = run.state;
   const verified = citations.flatMap((x) => x.verified);
@@ -533,12 +449,9 @@ function checkCitation(run, c, { expectVerified = true } = {}) {
   c.info("quotes", `${verified.length} verified, ${rejected.length} rejected${rejected.length ? `: ${rejected.join(" | ")}` : ""}`);
 }
 
-// ---------------------------------------------------------------------------
-// Cases. `search(query, state)` stubs search_site; `check(run, c)` adds the
-// case's own checks on top of the protocol checks every case gets.
+// Cases. `search(query, state)` stubs search_site; `check(run, c)` adds the case's own checks.
 
-// One on-page question per fact the fixture holds, so quote-verification pass
-// rate and the cost of the cite_page round are measured over more than one phrasing.
+// One question per fixture fact, so quote pass rate and cite_page's cost are measured over several phrasings.
 const onPageCase = (id, title, question, expected) => ({
   id: `on-page:${id}`,
   title: `On-page question (${title}): cite_page, then answer without searching`,
@@ -609,10 +522,7 @@ const CASES = [
     },
   },
   {
-    // The limit ADR 0005 states: one verified quote is a floor, not proof. The page
-    // names guest seats and gives no price, so the honest answer is "not on the page";
-    // a model that quotes the guest-seats line and then invents a price is the #5
-    // failure in miniature, and it earns the page label.
+    // ADR 0005's limit: one verified quote is a floor. The page gives no price, so a model that quotes guest seats then invents one is the #5 failure in miniature.
     id: "cite:partial",
     title: "Page half-covers the question (guest seats exist, no price): quote the seats line, then invent the price?",
     question: "How much do guest seats cost?",
@@ -623,9 +533,7 @@ const CASES = [
     },
   },
   {
-    // The cap is hit right after cite_page. The model has been told to quote before it
-    // answers and has just done so; with the tools off it must not reach for cite_page
-    // again. On real pages, follow-up questions ended in an error this way.
+    // Cap hit right after cite_page: with tools off the model must not reach for it again (follow-ups ended in an error this way).
     id: "force:cite",
     title: "Round cap hit right after cite_page: does the forced round answer instead of citing again?",
     question: "How many beta testers were in the preview?",
@@ -659,9 +567,7 @@ const CASES = [
     },
   },
   {
-    // The other side of the nudge: a page that doesn't cover the question gives the model
-    // nothing honest to quote. It is told it may say so; check it takes that way out
-    // instead of inventing a passage to satisfy the request.
+    // A page that doesn't cover the question: check the model takes the offered way out instead of inventing a passage.
     id: "cite:nudge-abstain",
     title: "Model answers without citing a question the page doesn't cover: does the nudge push it into inventing a quote?",
     question: PRICE_QUESTION,
@@ -678,11 +584,7 @@ const CASES = [
     },
   },
   {
-    // Adversarial: the first call is rejected even though its quote is on the page, so
-    // the model is told it is wrong about something it is right about. It usually
-    // re-cites; in about 1 run in 7 it thinks until the token limit and returns nothing
-    // (finish_reason "length"), which shows as a FAIL here and would be an error in the
-    // extension. A real rejection does not do this to it, since real ones are misquotes.
+    // Adversarial: a correct quote is rejected. The model usually re-cites; about 1 run in 7 it thinks to the token limit (finish_reason "length"), a FAIL here. Real rejections are misquotes, so this doesn't happen.
     id: "cite:recover",
     title: "cite_page rejects the first call: the model corrects itself instead of the loop failing",
     question: "How many beta testers were in the preview?",
@@ -724,9 +626,7 @@ const CASES = [
       c.info("invented quotes", `${rejected.length} rejected${rejected.length ? `: ${rejected.join(" | ")}` : ""}`);
     },
   },
-  // A page longer than the prompt holds (ADR 0006, #11): the model has the head and
-  // search_page. These are the #5 question in miniature: the head names and summarizes
-  // the section, and only search_page reaches the body.
+  // Page longer than the prompt (ADR 0006, #11): the head names the section and only search_page reaches the body (#5 in miniature).
   {
     id: "cut:section",
     title: "Cut page, question about the section the head only names and summarizes: search_page, quote it, answer from it",
@@ -793,10 +693,7 @@ const CASES = [
     },
   },
   {
-    // The first answer skips every tool, as the model does about 1 run in 10 on a whole
-    // page; with only the head to go on it would be the #5 answer. It is thrown away and
-    // the model asked to quote, and this checks the way out it is given (search the rest)
-    // is one it takes. The first round has no page tools, so it can only answer.
+    // The first answer skips every tool (about 1 run in 10 on a whole page) and is discarded; checks the model then searches the rest. Round 1 has no page tools.
     id: "cut:nudge",
     title: "Cut page, model answers without looking: the answer is thrown away and it searches and quotes first",
     page: CUT_PAGE,
@@ -811,8 +708,7 @@ const CASES = [
     },
   },
   {
-    // ADR 0001 measured 21,120 of 23,454 prompt tokens cached on a ~100K-char page. A cut
-    // page sends the same head every round with one more tool, so re-measure it.
+    // ADR 0001 measured 21,120 of 23,454 prompt tokens cached on a ~100K-char page; re-measure on a cut page.
     id: "cut:big-page",
     title: "Cut page at a realistic size (~120K-char head): latency, tokens, and whether the prefix is still cached across rounds",
     page: BIG_CUT_PAGE,
@@ -831,8 +727,7 @@ const CASES = [
     },
   },
   {
-    // ADR 0001's headline: page and web in one answer. With cite_page the model has
-    // two paths to choose between, so check it still combines them.
+    // ADR 0001's headline: page and web in one answer; check it still combines the two paths.
     id: "mixed",
     title: "Question needing both the page and a search: does the two-path prompt still combine them?",
     question: "How many beta testers were in the preview, and how much does the Loomkit Pro plan cost?",
@@ -915,8 +810,7 @@ const CASES = [
     },
   },
   {
-    // #7: the fetched page is itself too long, so fetch_page's own result comes back
-    // cut. Only search_page, on what fetch_page returned, can reach the number past it.
+    // #7: fetch_page's own result comes back cut; only search_page on it reaches the number.
     id: "fetch:cut",
     title: "fetch_page result itself comes back cut: search_page reaches past its own cut",
     question: "How does Loomkit decide when to prune an inactive board?",
@@ -940,9 +834,7 @@ const CASES = [
     },
   },
   {
-    // A measurement of an open behaviour, not a gate: the model answers from a snippet that
-    // half-answers the question about half the time (#7), which no wording tried so far has
-    // changed. Opt-in, so a default run is not half WARN; run it with --only=snippet:partial.
+    // A measurement, not a gate: the model answers from a half-answering snippet about half the time (#7). Opt-in via --only=snippet:partial.
     id: "snippet:partial",
     title: "Snippet half-answers the question: does the model read the page, or answer from the summary?",
     question: "How does Loomkit decide which inactive boards to archive?",
@@ -1014,8 +906,7 @@ const CASES = [
     },
   },
   {
-    // The cost that matters for the on-page case: every round re-sends the page,
-    // so the cite_page round should be a cache hit, not a second full prefill.
+    // Every round re-sends the page, so the cite_page round should be a cache hit.
     id: "big-page-on-page",
     title: "Realistic page size (~100K chars), on-page question: what the cite_page round costs",
     page: padPage(PAGE, 100_000),
@@ -1060,27 +951,21 @@ async function runLoop(model, testCase) {
   const tools = toolsFor(testCase);
   const done = (fields) => ({ rounds, state, answer: null, error: null, ...fields });
 
-  // Mirrors runAgentLoop: an answer to a page question with no tool called is thrown
-  // away, once, and the model asked to quote first. Not counted as a tool round.
+  // Mirrors runAgentLoop: a tool-less page answer is discarded once and the model asked to quote; not a tool round.
   let toolRounds = 0;
   let quoteNudge = null;
   let forcedRetried = false;
 
   for (let round = 1; ; round++) {
     const forced = toolRounds >= maxToolRounds;
-    // Mirrors agentLoop.ts's roundTools: search_page comes onto the table for the rest
-    // of the turn once a fetch_page result comes back cut (#7), even where isCut(testCase)
-    // is false, without touching toolsFor()'s own cite_page cut/whole choice.
+    // Mirrors agentLoop.ts's roundTools: a cut fetch adds search_page for the rest of the turn (#7).
     const roundTools = isCut(testCase) || state.fetchedFullContent === undefined ? tools : [...tools, SEARCH_PAGE_TOOL];
     let call;
     if (forced) {
       call = FORCE_STRATEGIES[forceStrategy](messages, roundTools);
       if (forcedRetried) call = { ...call, messages: [...call.messages, { role: "user", content: FORCE_RETRY }] };
     }
-    // skipFirstRound: round 1 gets the pre-cite_page prompt and tools, so the model
-    // answers straight away. That is what a skipped cite_page looks like, on demand, to
-    // test what the nudge does about it. (Dropping the tools instead would make it write
-    // the cite_page call out as raw markup, which is a different failure.)
+    // skipFirstRound: round 1 gets the pre-cite_page prompt and tools, so the model answers straight away; dropping tools would make it write raw markup instead.
     else if (testCase.skipFirstRound && round === 1) {
       const baseline = [{ role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: false, pageSearch: false }) }, ...messages.slice(1)];
       call = { messages: baseline, params: testCase.noSearch ? {} : { tools: SEARCH_TOOLS } };
@@ -1096,10 +981,7 @@ async function runLoop(model, testCase) {
     rounds.push({ round, forced, forceMode: forced ? forceStrategy : null, ...result });
 
     if (!result.toolCalls.length) {
-      // Mirrors mustQuoteFirst: nothing but page searches so far (what search_page returns is
-      // the page, so an answer after it still needs a quote), and not after a page search
-      // that found nothing, since then there is no passage to quote that could change the label.
-      // `rounds` already holds this one, and it has no tool calls, so it can't be the reason to stop.
+      // Mirrors mustQuoteFirst: not after only page searches, nor after a page search that found nothing.
       const searchedPageOnly = rounds.every((r) => r.toolCalls.every((tc) => tc.name === "search_page"));
       const foundNothing = state.pageSearches > 0 && state.pagePassages === 0;
       if (citeEnabled && !state.askedToQuote && searchedPageOnly && !foundNothing) {
@@ -1121,8 +1003,7 @@ async function runLoop(model, testCase) {
     }
     toolRounds++;
 
-    // Echo the assistant turn without its reasoning, the same shape the real
-    // handler will keep in history.
+    // Echo the assistant turn without its reasoning, as the real handler keeps it.
     messages.push({
       role: "assistant",
       content: result.content,
@@ -1144,9 +1025,7 @@ async function runLoop(model, testCase) {
 
 function runTool(testCase, state, tc, round) {
   if (tc.name === "search_page") {
-    // Mirrors searchWholePage: a cut fetch takes priority over the tab page (#7), since
-    // it's the most recent thing the model asked to read; otherwise refused where the
-    // tab page wasn't offered, or a local search of its cut-off part.
+    // Mirrors searchWholePage: a cut fetch takes priority over the tab page (#7).
     if (state.fetchedFullContent !== undefined) {
       const passages = searchPageStub({ content: state.fetchedFullContent.slice(0, FETCH_PAGE_CHAR_LIMIT), full: state.fetchedFullContent }, tc.args.query);
       state.pageSearches++;
@@ -1178,15 +1057,13 @@ function runTool(testCase, state, tc, round) {
     for (const r of results) state.allowedUrls.add(r.url);
     return withWebNote({ results }, "search");
   }
-  // fetch_page: the allowlist rule the real handler will enforce. Only URLs a
-  // search_site call returned, never one the model (or injected page text) made up.
+  // Allowlist: only URLs a search_site call returned, never model- or page-supplied ones.
   state.fetchedUrls.push(tc.args.url);
   if (!state.allowedUrls.has(tc.args.url)) {
     state.inventedUrls.push(tc.args.url);
     return { error: "fetch_page only accepts URLs returned by search_site." };
   }
-  // Mirrors runTool's fetch_page branch: cut at the same limit the real handler caps a
-  // fetch at, the rest kept for search_page to reach (#7).
+  // Mirrors runTool's fetch_page branch: cut at the same limit, rest kept for search_page (#7).
   const full = FULL_PAGES[tc.args.url] ?? "";
   const cut = full.length > FETCH_PAGE_CHAR_LIMIT;
   if (cut) state.fetchedFullContent = full;
@@ -1194,18 +1071,7 @@ function runTool(testCase, state, tc, round) {
   return withWebNote({ url: tc.args.url, content }, "fetch", cut ? full.length - FETCH_PAGE_CHAR_LIMIT : 0);
 }
 
-// Mirrors src/background/nebius/promptAssembly.ts: `search` is whether Tavily is configured,
-// `cite` whether cite_page is offered, `pageSearch` whether the page reached the model cut
-// short with its rest kept, so search_page is offered (ADR 0006).
-// With search and cite, the answer instructions are two explicit paths: cite_page only on the
-// page path. A single "cite before you answer from the page" line was read as a
-// step in every answer, so the model cited search snippets.
-// Search and fetch results say they aren't the page, in the message the model
-// reads last. The system prompt said the same and was ignored: after a search the
-// model cited the snippet ("it matches the page"), which is rejected, and the wasted
-// rounds ran into the round cap. Mirrors SEARCH_NOTE / FETCH_NOTE in
-// src/background/nebius/tools.ts. `charsOmitted` is only ever set on a cut fetch (#7);
-// that note is shown regardless of citeEnabled, unlike the other two.
+// Mirrors promptAssembly.ts and SEARCH_NOTE / FETCH_NOTE in tools.ts. With search and cite there are two explicit paths, cite_page only on the page path; notes in tool results say they aren't the page. `charsOmitted` is set only on a cut fetch (#7), whose note shows regardless of citeEnabled.
 function withWebNote(output, kind, charsOmitted = 0) {
   if (kind === "fetch" && charsOmitted) return { ...output, note: FETCH_NOTE_CUT(charsOmitted) };
   if (!citeEnabled) return output;
@@ -1257,8 +1123,7 @@ function systemPrompt(page, { search, cite, pageSearch = false }) {
         : ["You have no search available, so if the page doesn't cover the question, say so."]),
     ];
   }
-  // Said only of a page the prompt holds the start of. With search_page the way out is that
-  // tool, which reaches the missing section itself; otherwise it is search_site, or saying so.
+  // Only for a page the prompt holds the start of: search_page is the way out if offered, else search_site.
   const cutNotice = () => {
     const omitted = page.charsOmitted.toLocaleString("en-US");
     const cut = `The page content below is cut off: its last ${omitted} characters are not included, so every section after the cut is missing. A section the content only names or summarizes is one of them, and a summary is not the section.`;
@@ -1363,8 +1228,7 @@ async function chatStream(model, messages, params) {
       streamInfo.contentDeltas++;
       streamInfo.firstContentMs ??= elapsed();
     }
-    // Tool calls stream as fragments keyed by index: id and name usually come
-    // first, then the arguments JSON in pieces that only parse once joined.
+    // Tool calls stream as fragments keyed by index; the args JSON parses only once joined.
     for (const part of delta.tool_calls ?? []) {
       streamInfo.firstToolCallMs ??= elapsed();
       const slot = (calls[part.index ?? 0] ??= { id: "", type: "", name: "", args: "", fragments: 0 });
@@ -1378,8 +1242,7 @@ async function chatStream(model, messages, params) {
     }
   }
 
-  // A data: payload can be split across reads (see nebius/client.ts), so the
-  // trailing partial line carries over to the next read.
+  // A data: payload can split across reads, so carry the trailing partial line over.
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -1407,16 +1270,14 @@ async function chatStream(model, messages, params) {
   };
 }
 
-// Nebius's Nemotron returns `reasoning`; other OpenAI-compatible wrappers use
-// `reasoning_content`. Works on a full message and on a stream delta.
+// Nemotron returns `reasoning`, other wrappers `reasoning_content`; works on a message or a stream delta.
 function reasoningOf(source) {
   if (source.reasoning) return { reasoning: source.reasoning, reasoningField: "reasoning" };
   if (source.reasoning_content) return { reasoning: source.reasoning_content, reasoningField: "reasoning_content" };
   return { reasoning: "", reasoningField: null };
 }
 
-// Normalizes one tool call and lists everything the agent handler would have
-// to defend against.
+// Normalizes one tool call and lists what the agent handler must defend against.
 function inspectToolCall({ id, type, name, args: rawArgs }) {
   const problems = [];
   if (!id) problems.push("missing id");
@@ -1550,8 +1411,7 @@ function printModelNotes(runs) {
   );
 }
 
-// What each case cost, averaged over its runs: the number that prices cite_page's
-// extra round. Compare a normal run with a --no-cite one on the same cases.
+// Per-case cost averaged over runs, which prices cite_page's extra round; compare with a --no-cite run.
 function printCostSummary(runs) {
   // Grouped by hand: Map.groupBy needs Node 21, and the repo supports Node ^20.19.
   const byCase = new Map();
@@ -1603,8 +1463,7 @@ function normalize(query) {
   return query.trim().toLowerCase();
 }
 
-// Pads the fixture to a realistic article size (Sift caps extraction at 120K
-// chars) with release notes that can't answer any of the questions.
+// Pads the fixture to realistic size (Sift caps extraction at 120K chars) with irrelevant release notes.
 function padPage(page, targetChars) {
   const lines = [page.content, "", "Release notes archive:"];
   let length = lines.join("\n").length;
@@ -1616,8 +1475,7 @@ function padPage(page, targetChars) {
   return { ...page, content: lines.join("\n") };
 }
 
-// A cut page at the size Sift sends: the head padded with log lines that can't answer any
-// question above, up to targetChars. The section past the cut is unchanged.
+// A cut page at Sift's size: head padded with irrelevant log lines; the section past the cut is unchanged.
 function padCut(page, targetChars) {
   const lines = [page.content, "Appendix: write log excerpt"];
   let length = lines.join("\n").length;

@@ -4,9 +4,7 @@ import { streamAgentTurn } from './client'
 
 vi.mock('./modelDiscovery', () => ({ resolveNemotronModel: vi.fn().mockResolvedValue('test-model') }))
 
-// A ReadableStream reader the test drives by hand: read() stays pending until push()
-// or end() resolves it, and it rejects with the signal's abort reason the instant
-// streamAgentTurn aborts — the same thing a real in-flight fetch body read would do.
+// A reader driven by hand: read() stays pending until push()/end() and rejects with the signal's abort reason, like a real body read.
 function fakeBody(signal: AbortSignal) {
   let pending: { resolve: (r: { done: boolean; value?: Uint8Array }) => void; reject: (e: unknown) => void } | undefined
 
@@ -68,8 +66,7 @@ describe('streamAgentTurn idle timeout (#28)', () => {
     const { push } = stubStreamingFetch()
 
     const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
-    // Attached now, synchronously, so the promise is never briefly unhandled once the
-    // timer advance below makes it reject.
+    // Attached synchronously so the rejection is never briefly unhandled.
     const rejection = expect(promise).rejects.toThrow(/no data for 30s/)
     await vi.advanceTimersByTimeAsync(0)
     push(sseLine('Hello'))
@@ -86,8 +83,7 @@ describe('streamAgentTurn idle timeout (#28)', () => {
     const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
     await vi.advanceTimersByTimeAsync(0)
 
-    // 5 gaps of (idle window - 1s): none alone trips the timer, but their sum is
-    // almost 2.5x the idle window — proves this is silence-based, not a flat cap.
+    // 5 gaps of (idle window - 1s) sum to ~2.5x the window: shows the timeout is silence-based, not a flat cap.
     for (let i = 0; i < 5; i++) {
       await vi.advanceTimersByTimeAsync(NEBIUS_STREAM_IDLE_TIMEOUT_MS - 1000)
       push(sseLine(`chunk${i} `))

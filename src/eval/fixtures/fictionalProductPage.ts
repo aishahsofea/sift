@@ -1,9 +1,7 @@
 import type { TavilySearchResult } from '../../background/tavily/client'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 
-// A fictional product, deliberately different branding from loomkit.example
-// (scripts/test-nebius-tools.mjs, agentLoop.test.ts) just so the two fixtures
-// never look alike side by side.
+// Deliberately different branding from loomkit.example (scripts/test-nebius-tools.mjs, agentLoop.test.ts) so the fixtures never look alike.
 
 // The on-page fact: findable with no tool at all.
 export const BETA_TESTER_QUOTE =
@@ -49,8 +47,7 @@ export const authorPostsResults: TavilySearchResult[] = [
   },
 ]
 
-// Prior context the follow-up's pronoun ("she") resolves against (ADR 0001 problem 1):
-// a model writing "she" as its search_site query would search nothing useful.
+// Prior context the follow-up's "she" resolves against (ADR 0001 problem 1).
 export const authorEstablishedHistory: ChatTurn[] = [
   { role: 'user', content: 'Who wrote this post?' },
   { role: 'assistant', content: 'Priya Chandran, the founder, wrote it.', source: 'page', quotes: ['By Priya Chandran, founder.'] },

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// resolveNemotronModel caches for the service worker's lifetime, so every test
-// needs a fresh module instance.
+// resolveNemotronModel caches for the worker's lifetime, so each test needs a fresh module.
 async function freshResolve() {
   vi.resetModules()
   const mod = await import('./modelDiscovery')
