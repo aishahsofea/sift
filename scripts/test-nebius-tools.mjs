@@ -1,12 +1,12 @@
-// Live spike of native tool calling on Nebius + Nemotron (ADR 0001, 0005, 0006, #7) against a fictional site (loomkit.example) with stubbed tools, so answers can't come from model knowledge. No Tavily calls.
+// Live spike of native tool calling on Nebius + Nemotron (ADR 0001, 0005, 0006, #7) on a fictional site.
 //
 // Run with:
 //   npm run test:tools                         # default Nemotron model
 //   npm run test:tools -- <model-id> [...]     # compare specific models
-//   npm run test:tools -- --only=<case-id>     # one case, or a group: --only=force compares force strategies (comma-separate several)
+//   npm run test:tools -- --only=<case-id>     # one case, or a group (--only=force); comma-separate
 //   npm run test:tools -- --repeat=<n>         # run each case n times, for flaky behavior
-//   npm run test:tools -- --no-cite            # the pre-#10 prompt and tools: the baseline cite_page's cost is measured against
-//   npm run test:tools -- --show-reasoning     # print each round's chain of thought, to see why the model picked a tool
+//   npm run test:tools -- --no-cite            # the pre-#10 prompt and tools: the baseline for cite_page
+//   npm run test:tools -- --show-reasoning     # print each round's chain of thought
 // Requires NEBIUS_API_KEY in .env (see .env.example). Exits 1 on any FAIL.
 
 const BASE_URL = "https://api.tokenfactory.nebius.com/v1";
@@ -155,10 +155,10 @@ const REQUIRED_ARGS = Object.fromEntries(
   ]),
 );
 
-// Verified on Nemotron 3 Nano (2026-09-23, 5 runs each): tool_choice "none" or omitted tools still yields raw <tool_call> markup; only omitting tools plus a nudge gave a clean answer (5/5). The rejected strategies run only with --only=force.
+// tool_choice "none" or omitted tools still yields raw <tool_call> markup; only no tools plus a nudge works.
 const FORCE_NUDGE =
   "You've used all your searches. Answer now from the page and the results above. If they don't cover the question, say you couldn't find it.";
-// Names cite_page, since with tools off the model reached for it anyway. Mirrors FORCE_NUDGE_CITE / FORCE_RETRY in tools.ts.
+// Names cite_page, since with tools off the model reached for it anyway. Mirrors FORCE_NUDGE_CITE.
 const FORCE_NUDGE_CITE =
   "You've used all your tool calls, and cite_page is no longer available. Answer now, in plain text, from the page and the results above. If they don't cover the question, say you couldn't find it.";
 const FORCE_RETRY = "Do not call any tool. Write your answer as plain text now.";
@@ -172,7 +172,7 @@ const FORCE_STRATEGIES = {
 };
 const DEFAULT_FORCE_STRATEGY = "omit-tools+nudge";
 
-// Tool-call syntax that should have been parsed into message.tool_calls; in the reasoning of a no-tool-call round it means a missed server-side parse.
+// Tool-call syntax that should have been parsed into tool_calls; in a no-tool round it means a missed parse.
 const TOOL_MARKUP = /<\/?tool_?call>|<TOOLCALL>|<function[=\s>]/i;
 const TOOL_JSON = /"name"\s*:\s*"(search_site|fetch_page|cite_page|search_page)"/;
 
@@ -199,7 +199,7 @@ const PAGE = {
   ].join("\n"),
 };
 
-// Real typography (curly quotes, em dash, ellipsis, non-breaking hyphen): quotes verify against the page as written, so faithful copying decides how often good answers read as unverified.
+// Real typography (curly quotes, em dash, ellipsis): faithful copying decides how often answers verify.
 const TYPO_PAGE = {
   ...PAGE,
   content: [
@@ -209,7 +209,7 @@ const TYPO_PAGE = {
   ].join("\n"),
 };
 
-// Page longer than the prompt (ADR 0006): `content` is the head, `full` the page as kept; the head names and summarizes section 5, whose body is past the cut (the #5 state).
+// Page longer than the prompt (ADR 0006): `content` is the head, `full` the kept page; section 5 is cut.
 const CUT_HEAD = [
   "The Loomkit Sync Incident: a postmortem",
   "By Dana Reyes, co-founder. Published April 9, 2026.",
@@ -266,7 +266,7 @@ const PRICE = /17\.50/;
 const MADE_UP_PRICE = /\$\s?\d/;
 const PRICE_QUESTION = "How much does the Loomkit Pro plan cost?";
 
-// Reached only via fetch_page, padded past FETCH_PAGE_CHAR_LIMIT so the number is past fetch_page's own cut (#7).
+// Reached only via fetch_page, padded past FETCH_PAGE_CHAR_LIMIT so the number is past its own cut (#7).
 const PRUNING_URL = "https://loomkit.example/help/board-pruning";
 const PRUNING_HEAD = "How Loomkit prunes inactive boards\n\nBoards that stop getting used are archived automatically.\n";
 const PRUNING_TAIL = "\nA board is pruned once its inactivity score passes a threshold of 0.87.";
@@ -274,7 +274,7 @@ const BIG_PRUNING_PAGE = padCut({ content: PRUNING_HEAD, full: PRUNING_HEAD + PR
 const PRUNING_SNIPPET = "An overview of how Loomkit decides a board has gone stale and archives it.";
 const PRUNING_SCORE = /0\.87/;
 
-// #7's shape: the snippet names the mechanism, not the score. Measured 2026-09-28, 12 runs each: page read 5 times, snippet answered 7, on old and reworded SEARCH_NOTE alike (ADR 0009).
+// #7's shape: the snippet names the mechanism, not the score (ADR 0009).
 const PARTIAL_URL = "https://loomkit.example/help/board-archiving";
 const PARTIAL_SNIPPET = "Loomkit automatically archives boards that have gone inactive. Archiving is based on how recently a board was edited.";
 const PARTIAL_PAGE = [
@@ -330,25 +330,25 @@ const FULL_PAGES = {
 const MIN_QUOTE_CHARS = 10;
 const collapse = (text) => text.replace(/\s+/g, " ").trim();
 
-// The title and content the prompt shows; on a cut page all of it, since a quote can come from search_page (ADR 0006).
+// The title and content the prompt shows; on a cut page all of it, since a quote can come from search_page.
 const pageText = (page) => [page.title, page.full ?? page.content].join("\n");
 
 const RECOVERY_HINT =
   "Copy each passage exactly as it appears in the page content. If the page doesn't say it, don't cite it. Search results can't be cited.";
-// Once one quote verifies the result says to stop. Mirrors CITE_DONE_NOTE / CITE_PARTIAL_NOTE / CITE_NUDGE in tools.ts.
+// Once one quote verifies the result says to stop. Mirrors CITE_DONE_NOTE / CITE_PARTIAL_NOTE in tools.ts.
 const CITE_DONE_NOTE = "All of these are on the page. Answer now from them, in your own words. Don't call cite_page again.";
 const CITE_PARTIAL_NOTE = "Only the verified passages are on the page. Answer now using only those, and don't call cite_page again.";
 // Sent for one request when a page question was answered without cite_page.
 const CITE_NUDGE =
   "Before you answer, call cite_page with up to three short passages from the page content that support your answer, copied word for word. If the page content doesn't cover the question, say so instead.";
-// Same ask on a cut page, plus search_page's result notes. Mirror CITE_NUDGE_CUT / PAGE_SEARCH_NOTE / PAGE_SEARCH_EMPTY_NOTE.
+// Same ask on a cut page, plus search_page's notes. Mirrors CITE_NUDGE_CUT / PAGE_SEARCH_NOTE in tools.ts.
 const CITE_NUDGE_CUT =
   "Before you answer, call cite_page with up to three short passages from the page that support your answer, copied word for word. If the passages are in the part that is cut off, call search_page for them first. If the page doesn't cover the question, say so instead.";
 const PAGE_SEARCH_NOTE =
   "These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.";
 const PAGE_SEARCH_EMPTY_NOTE =
   "Nothing on the page matches those words. Search again with different words, or answer from what you have.";
-// search_page notes for a fetched page: not citable, so SEARCH_NOTE's shape. Mirror PAGE_SEARCH_NOTE_FETCHED / PAGE_SEARCH_EMPTY_NOTE_FETCHED.
+// search_page notes for a fetched page: not citable. Mirrors PAGE_SEARCH_NOTE_FETCHED in tools.ts.
 const PAGE_SEARCH_NOTE_FETCHED =
   "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words.";
 const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
@@ -377,7 +377,7 @@ function citePage(page, quotes, { injectRejection = false } = {}) {
   return { verified, errors };
 }
 
-// Crude stand-in for searchPage.ts (BM25): paragraphs sharing words with the query, best first, with two slots held for the cut-off part. Measures what the model does with a result, not ranking.
+// Crude stand-in for searchPage.ts (BM25), two slots held for the cut-off part; measures the model.
 function searchPageStub(page, query) {
   const stem = (word) => word.toLowerCase().replace(/s$/, "");
   const words = (text) => (text.match(/[\p{L}\p{N}]+/gu) ?? []).map(stem);
@@ -401,7 +401,7 @@ function searchPageStub(page, query) {
   return chosen.sort((a, b) => b.score - a.score).map(({ offset, text }) => ({ offset, text }));
 }
 
-// Shared cut-page checks (ADR 0006): searched the unseen part, quoted, and quoted from it; `expectSearch: false` is where the head answers.
+// Shared cut-page checks (ADR 0006): searched the unseen part, quoted it; `expectSearch: false` skips search.
 function checkCutPage(run, c, page, { expectSearch = true } = {}) {
   const { citations, pageSearches, pagePassages, pageQueries } = run.state;
   const verified = citations.flatMap((x) => x.verified);
@@ -451,7 +451,7 @@ function checkCitation(run, c, { expectVerified = true } = {}) {
 
 // Cases. `search(query, state)` stubs search_site; `check(run, c)` adds the case's own checks.
 
-// One question per fixture fact, so quote pass rate and cite_page's cost are measured over several phrasings.
+// One question per fixture fact, so quote pass rate and cite_page's cost span several phrasings.
 const onPageCase = (id, title, question, expected) => ({
   id: `on-page:${id}`,
   title: `On-page question (${title}): cite_page, then answer without searching`,
@@ -522,7 +522,7 @@ const CASES = [
     },
   },
   {
-    // ADR 0005's limit: one verified quote is a floor. The page gives no price, so a model that quotes guest seats then invents one is the #5 failure in miniature.
+    // ADR 0005's limit: one verified quote is a floor. No price on the page, so inventing one is #5.
     id: "cite:partial",
     title: "Page half-covers the question (guest seats exist, no price): quote the seats line, then invent the price?",
     question: "How much do guest seats cost?",
@@ -533,7 +533,7 @@ const CASES = [
     },
   },
   {
-    // Cap hit right after cite_page: with tools off the model must not reach for it again (follow-ups ended in an error this way).
+    // Cap hit right after cite_page: with tools off the model must not reach for it again.
     id: "force:cite",
     title: "Round cap hit right after cite_page: does the forced round answer instead of citing again?",
     question: "How many beta testers were in the preview?",
@@ -567,7 +567,7 @@ const CASES = [
     },
   },
   {
-    // A page that doesn't cover the question: check the model takes the offered way out instead of inventing a passage.
+    // A page that doesn't cover the question: the model should take the offered way out, not invent.
     id: "cite:nudge-abstain",
     title: "Model answers without citing a question the page doesn't cover: does the nudge push it into inventing a quote?",
     question: PRICE_QUESTION,
@@ -584,7 +584,7 @@ const CASES = [
     },
   },
   {
-    // Adversarial: a correct quote is rejected. The model usually re-cites; about 1 run in 7 it thinks to the token limit (finish_reason "length"), a FAIL here. Real rejections are misquotes, so this doesn't happen.
+    // Adversarial: a correct quote is rejected; the model usually re-cites instead of thinking to the limit.
     id: "cite:recover",
     title: "cite_page rejects the first call: the model corrects itself instead of the loop failing",
     question: "How many beta testers were in the preview?",
@@ -626,7 +626,7 @@ const CASES = [
       c.info("invented quotes", `${rejected.length} rejected${rejected.length ? `: ${rejected.join(" | ")}` : ""}`);
     },
   },
-  // Page longer than the prompt (ADR 0006, #11): the head names the section and only search_page reaches the body (#5 in miniature).
+  // Page longer than the prompt (ADR 0006, #11): only search_page reaches the body (#5 in miniature).
   {
     id: "cut:section",
     title: "Cut page, question about the section the head only names and summarizes: search_page, quote it, answer from it",
@@ -693,7 +693,7 @@ const CASES = [
     },
   },
   {
-    // The first answer skips every tool (about 1 run in 10 on a whole page) and is discarded; checks the model then searches the rest. Round 1 has no page tools.
+    // The first answer skips every tool and is discarded; checks the model then searches the rest.
     id: "cut:nudge",
     title: "Cut page, model answers without looking: the answer is thrown away and it searches and quotes first",
     page: CUT_PAGE,
@@ -708,7 +708,7 @@ const CASES = [
     },
   },
   {
-    // ADR 0001 measured 21,120 of 23,454 prompt tokens cached on a ~100K-char page; re-measure on a cut page.
+    // ADR 0001 measured the prompt cache on a ~100K-char page; re-measure on a cut page.
     id: "cut:big-page",
     title: "Cut page at a realistic size (~120K-char head): latency, tokens, and whether the prefix is still cached across rounds",
     page: BIG_CUT_PAGE,
@@ -834,7 +834,7 @@ const CASES = [
     },
   },
   {
-    // A measurement, not a gate: the model answers from a half-answering snippet about half the time (#7). Opt-in via --only=snippet:partial.
+    // A measurement, not a gate: the model may answer from a half-answering snippet (#7).
     id: "snippet:partial",
     title: "Snippet half-answers the question: does the model read the page, or answer from the summary?",
     question: "How does Loomkit decide which inactive boards to archive?",
@@ -951,7 +951,7 @@ async function runLoop(model, testCase) {
   const tools = toolsFor(testCase);
   const done = (fields) => ({ rounds, state, answer: null, error: null, ...fields });
 
-  // Mirrors runAgentLoop: a tool-less page answer is discarded once and the model asked to quote; not a tool round.
+  // Mirrors runAgentLoop: a tool-less page answer is discarded once and the model asked to quote.
   let toolRounds = 0;
   let quoteNudge = null;
   let forcedRetried = false;
@@ -965,7 +965,7 @@ async function runLoop(model, testCase) {
       call = FORCE_STRATEGIES[forceStrategy](messages, roundTools);
       if (forcedRetried) call = { ...call, messages: [...call.messages, { role: "user", content: FORCE_RETRY }] };
     }
-    // skipFirstRound: round 1 gets the pre-cite_page prompt and tools, so the model answers straight away; dropping tools would make it write raw markup instead.
+    // skipFirstRound: round 1 gets the pre-cite_page prompt and tools; dropping tools would yield raw markup.
     else if (testCase.skipFirstRound && round === 1) {
       const baseline = [{ role: "system", content: systemPrompt(testCase.page ?? PAGE, { search: !testCase.noSearch, cite: false, pageSearch: false }) }, ...messages.slice(1)];
       call = { messages: baseline, params: testCase.noSearch ? {} : { tools: SEARCH_TOOLS } };
@@ -1071,7 +1071,7 @@ function runTool(testCase, state, tc, round) {
   return withWebNote({ url: tc.args.url, content }, "fetch", cut ? full.length - FETCH_PAGE_CHAR_LIMIT : 0);
 }
 
-// Mirrors promptAssembly.ts and SEARCH_NOTE / FETCH_NOTE in tools.ts. With search and cite there are two explicit paths, cite_page only on the page path; notes in tool results say they aren't the page. `charsOmitted` is set only on a cut fetch (#7), whose note shows regardless of citeEnabled.
+// Mirrors promptAssembly.ts and SEARCH_NOTE / FETCH_NOTE in tools.ts; `charsOmitted` only on a cut fetch.
 function withWebNote(output, kind, charsOmitted = 0) {
   if (kind === "fetch" && charsOmitted) return { ...output, note: FETCH_NOTE_CUT(charsOmitted) };
   if (!citeEnabled) return output;

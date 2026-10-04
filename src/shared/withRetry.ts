@@ -1,4 +1,4 @@
-// One retry on network failure or 5xx, never 4xx: a 4xx here means a bad or missing key and should surface at once.
+// One retry on network failure or 5xx, never 4xx: a 4xx means a bad or missing key and should surface.
 export async function withRetry(url: string, init: RequestInit): Promise<Response> {
   return attempt(url, init, false)
 }

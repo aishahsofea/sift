@@ -34,7 +34,7 @@ vi.mock('../background/tavily/client', () => ({ searchTavily: vi.fn(), extractTa
 
 const FAKE_TAVILY_KEY = 'eval-fake-tavily-key'
 
-// streamAgentTurn has no request timeout and Vitest can't abort the in-flight fetch, so a stalled stream cost ~15 minutes per case; scoped here so a stall fails fast and isn't read as a miss.
+// streamAgentTurn has no request timeout and Vitest can't abort a fetch; scoped so a stall fails fast.
 const REQUEST_TIMEOUT_MS = 90_000
 const realFetch = globalThis.fetch
 beforeAll(() => {
@@ -47,7 +47,7 @@ const chain = { runs: 0, searchedSite: 0, readPage: 0, searchedAfterReading: 0, 
 // Floor on reading the page after a search; see the describe below.
 const READ_FLOOR = 0.5
 const MIN_OPPORTUNITIES = 6
-// Of runs that searched the fetched page, how many reach all three thresholds (#27: 4 of 8 live, from 4 of 35). A floor far under that, for the search regressing; the expects stay off since the model often never searches.
+// Of runs that searched the fetched page, how many reach all three thresholds (#27); reported, not gated.
 const THRESHOLD_FLOOR = 0.25
 
 afterAll(() => {
@@ -67,7 +67,7 @@ const stepsOf = (posted: AskPortMessage[]) => posted.filter((m): m is Extract<As
 // A stalled request is aborted at REQUEST_TIMEOUT_MS, and a run is up to four requests.
 const RUN_TIMEOUT_MS = 4 * REQUEST_TIMEOUT_MS + 30_000
 
-// The tab page as in the real incident: 242K chars, cut at 120K with the rest kept, so cite_page and search_page are offered from round one. search_site finds the companion paper with a thin snippet.
+// The tab page as in the real incident: 242K chars, cut at 120K with the rest kept; thin search snippet.
 const ask = (question: string) =>
   runCase({
     page,
@@ -78,14 +78,14 @@ const ask = (question: string) =>
     extractResult: METHODS_FULL_TEXT,
   })
 
-// Fails fast, with no API call, if a regressed fixture lacks the Appendix F thresholds past fetch_page's cut.
+// Fails fast, with no API call, if a regressed fixture lacks the Appendix F thresholds past the cut.
 describe('fixture integrity', () => {
   it('still has the real Appendix F thresholds past FETCHED_PAGE_CHAR_LIMIT', () => {
     expect(() => assertFixtureIntegrity()).not.toThrow()
   })
 })
 
-// Issue #7's chain: thin snippet, fetch_page, then search_page past the fetched page's own cut (303,698 chars vs 20,000). That uses all MAX_TOOL_ROUNDS, so the search_page query decides the last stage. Reading after a search is a floor over the batch, not per run (30 of 31 vs 21 of 26 runs; ADR 0009), hence 3x repeats (ADR 0007). Reaching all three thresholds is reported, not gated: a mostly-red gate isn't a regression net.
+// Issue #7's chain: thin snippet, fetch_page, then search_page past the fetched page's cut (ADR 0007, 0009).
 describe('fetch_page escalates past a thin snippet, then past its own cut (#7)', () => {
   for (let i = 0; i < getRepeatCount() * 3; i++) {
     it(
@@ -97,7 +97,7 @@ describe('fetch_page escalates past a thin snippet, then past its own cut (#7)',
         recordRun({ category: 'fetch-escalation', label: thresholdsQuestion, turn, error, elapsedMs, stepKinds })
 
         if (isStall(error)) {
-          // An endpoint stall says nothing about escalation; counted as an error, reported apart from misses (ADR 0009).
+          // An endpoint stall says nothing about escalation; counted as an error, not a miss (ADR 0009).
           console.warn(`[eval] fetch-escalation run ${i + 1} hit an endpoint stall, not counted: ${error}`)
           return
         }
@@ -116,7 +116,7 @@ describe('fetch_page escalates past a thin snippet, then past its own cut (#7)',
         console.log(`[eval] fetch-escalation run ${i + 1}: ${elapsedMs}ms, steps ${steps}, thresholds in answer ${landed}/3, label ${turn?.source}, answer ${JSON.stringify(content.slice(0, 400))}`)
 
         expect(error, error).toBeUndefined()
-        // Only a search with a round left to read in counts; one in the last round is followed by the forced answer.
+        // Only a search with a round left to read in counts; one in the last round gets the forced answer.
         if (firstSearch !== -1 && firstSearch < MAX_TOOL_ROUNDS - 1) {
           chain.searchedWithRoundLeft++
           if (read !== -1) chain.readGivenSearch++
@@ -126,7 +126,7 @@ describe('fetch_page escalates past a thin snippet, then past its own cut (#7)',
     )
   }
 
-  // Done-when #1 of #7 (a thin snippet gives a Reading… step), as a floor over the batch; runs after the repeats.
+  // Done-when #1 of #7 (a thin snippet gives a Reading... step), as a floor over the batch.
   it('reads the page in most of the runs that searched with a round left to read in', () => {
     const { searchedWithRoundLeft: n, readGivenSearch: k } = chain
     if (n < MIN_OPPORTUNITIES) {
@@ -146,7 +146,7 @@ describe('fetch_page escalates past a thin snippet, then past its own cut (#7)',
   })
 })
 
-// Issue #7's own words, telemetry not a gate: the model judges the tab page to cover the question and never searches (see pruningQuestion), an open gap in its coverage judgement, not in escalation.
+// Issue #7's own words, telemetry not a gate: the model judges the tab page covers it and never searches.
 describe("issue #7's verbatim question (telemetry only)", () => {
   for (let i = 0; i < getRepeatCount(); i++) {
     it(`records whether the model looks past the tab page, run ${i + 1}`, async () => {

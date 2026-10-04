@@ -24,17 +24,17 @@ afterAll(() => {
   printSummary()
 })
 
-// Fails fast, with no API call, if the fixture loses its real Appendix F thresholds past FETCHED_PAGE_CHAR_LIMIT.
+// Fails fast, with no API call, if the fixture loses its Appendix F thresholds past FETCHED_PAGE_CHAR_LIMIT.
 describe('fixture integrity', () => {
   it('still has the real Appendix F thresholds past FETCHED_PAGE_CHAR_LIMIT', () => {
     expect(() => assertFixtureIntegrity()).not.toThrow()
   })
 })
 
-// #30: with a real public paper a correct answer could be prior knowledge, so ask about it by name/URL, not "companion paper" (which needs withheld page context). See ADR 0007.
+// #30: a correct answer on a public paper could be prior knowledge, so ask by name/URL (ADR 0007).
 const probeQuestion = `What exact thresholds does the paper at ${METHODS_URL} use when pruning nodes and edges from an attribution graph, per its Appendix F?`
 
-// Diagnostic, not a gate (ADR 0007: "read the misses, not the count"): no retrieval tool is offered, and cite_page rejects quotes not in the given page.
+// Diagnostic, not a gate (ADR 0007): no retrieval tool is offered, and cite_page rejects off-page quotes.
 describe('contamination probe: does the model know the thresholds with no retrieval path (#30)', () => {
   for (let i = 0; i < getRepeatCount(); i++) {
     it(`answers with no tool access, run ${i + 1}`, async () => {

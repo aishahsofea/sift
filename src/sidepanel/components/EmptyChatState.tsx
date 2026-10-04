@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { pickGreeting } from '../greeting'
 
-// Module-level so "never twice in a row" survives the unmount on first question and remount after Clear (#16).
+// Module-level so "never twice in a row" survives the unmount on first question and after Clear (#16).
 let lastGreeting: string | undefined
 
 export function EmptyChatState({ title }: { title: string }) {

@@ -24,7 +24,7 @@ export interface AgentPromptOptions {
   pageSearchEnabled: boolean
 }
 
-// The page sits in the system message so every round re-sends an identical prefix that Nano serves from its prompt cache, and page plus search results can combine (ADR 0001).
+// The page sits in the system message so every round re-sends an identical, cacheable prefix (ADR 0001).
 export function assembleAgentMessages(
   page: ExtractedPage,
   history: ChatTurn[],
@@ -38,7 +38,7 @@ export function assembleAgentMessages(
   ]
 }
 
-// Verified prompt surface (scripts/test-nebius-tools.mjs keeps a copy). With both tools there are two explicit paths, with cite_page on the page path only; one line made Nano cite search snippets (ADR 0005).
+// Verified prompt surface (scripts/test-nebius-tools.mjs keeps a copy); one line made Nano cite snippets.
 function answerInstructions(site: string, options: AgentPromptOptions): string[] {
   const { searchEnabled, citeEnabled, pageSearchEnabled } = options
   const intro = `You answer questions about the web page the user is viewing on ${site}.`
@@ -87,7 +87,7 @@ function answerInstructions(site: string, options: AgentPromptOptions): string[]
   ]
 }
 
-// What a cite_page quote is checked against (ADR 0005): title and byline are included since the model answers from them (#6); `content` is the whole page when only the head is in the prompt (#11); the URL is metadata.
+// What a cite_page quote is checked against (ADR 0005): title, byline (#6) and the whole page if cut (#11).
 export function pageText(page: ExtractedPage, content: string = page.content): string {
   return [page.title, page.byline, content].filter(Boolean).join('\n')
 }
@@ -102,7 +102,7 @@ function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions
     '',
     `Page title: ${page.title}`,
     `Page URL: ${page.url}`,
-    // Own section above the content, labelled "on the page" so the model answers "who wrote this?" from it (#6).
+    // Own section above the content so the model answers "who wrote this?" from it (#6).
     ...(page.byline
       ? ['Page byline, shown on the page (authors, affiliations, publication details):', page.byline]
       : []),
@@ -111,7 +111,7 @@ function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions
   ].join('\n')
 }
 
-// Without this the model reads a cut page as whole and never searches, even when a summary stands in for a cut section (#5, #12). Constant per page, so the cacheable prefix is stable; with the rest kept (#11) the way out is search_page, not search_site.
+// Without this the model reads a cut page as whole and never searches (#5, #12); the way out is search_page.
 function truncationNotice(page: ExtractedPage, { searchEnabled, pageSearchEnabled }: AgentPromptOptions): string[] {
   if (!page.truncated) return []
 

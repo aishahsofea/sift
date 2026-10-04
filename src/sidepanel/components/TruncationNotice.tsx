@@ -1,6 +1,6 @@
 import { describeTruncatedPage } from '../truncationLabel'
 
-// Shown on reading a truncated page, before the first question, so the user knows it's a fragment (#12) and whether the rest is reachable (#11).
+// Shown before the first question so the user knows the page is a fragment (#12) and what's reachable.
 export function TruncationNotice({ charsOmitted, searchable }: { charsOmitted: number; searchable: boolean }) {
   return (
     <div role="status" aria-live="polite" className="truncation-notice">

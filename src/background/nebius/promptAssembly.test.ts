@@ -170,7 +170,7 @@ describe('assembleAgentMessages', () => {
     })
   })
 
-  // Cut short but the rest kept, so search_page reaches it and quotes check against all of it (#11, ADR 0006).
+  // Cut short but the rest kept, so search_page reaches it and quotes check against all (#11, ADR 0006).
   describe('when the rest of a cut-short page can be searched', () => {
     const truncatedPage: ExtractedPage = { ...page, truncated: true, charsOmitted: 126_323, searchable: true }
     const searchableWithWeb = { searchEnabled: true, citeEnabled: true, pageSearchEnabled: true }
@@ -251,7 +251,7 @@ describe('assembleAgentMessages', () => {
 
   it('says nothing about truncation when the page is whole', () => {
     const [system] = assembleAgentMessages(page, [], 'q', withSearch)
-    // Distinct from the fetch-escalation clause (#7), which mentions "cut off" here too: checks the tab-page truncation notice is absent.
+    // Distinct from the fetch-escalation clause (#7), which also says "cut off": tab-page notice is absent.
     expect(system.content).not.toContain('The page content below is cut off')
     expect(system.content).not.toContain('characters')
   })

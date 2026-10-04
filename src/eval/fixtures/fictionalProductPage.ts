@@ -1,7 +1,7 @@
 import type { TavilySearchResult } from '../../background/tavily/client'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 
-// Deliberately different branding from loomkit.example (scripts/test-nebius-tools.mjs, agentLoop.test.ts) so the fixtures never look alike.
+// Deliberately different branding from loomkit.example (scripts/test-nebius-tools.mjs, agentLoop.test.ts).
 
 // The on-page fact: findable with no tool at all.
 export const BETA_TESTER_QUOTE =

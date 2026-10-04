@@ -22,7 +22,7 @@ async function listModels() {
   return body.data.map((m) => m.id);
 }
 
-// Preferred Nemotron models in order, each checked against a live GET /v1/models; same list as src/background/nebius/modelDiscovery.ts.
+// Preferred Nemotron models in order, each checked against a live GET /v1/models; mirrors modelDiscovery.ts.
 const NEMOTRON_CANDIDATES = [
   "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
   "nvidia/nemotron-3-super-120b-a12b",

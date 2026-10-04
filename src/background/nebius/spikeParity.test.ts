@@ -23,7 +23,7 @@ import {
   SEARCH_PAGE_TOOL,
 } from './tools'
 
-// The standalone script keeps its own copy of the prompt and tool wording and is the only live check of it (ADR 0001, 0003, 0005, 0006); this fails when the two drift.
+// The standalone script keeps its own copy of the prompt and tool wording; this fails when they drift.
 const script = readFileSync(new URL('../../../scripts/test-nebius-tools.mjs', import.meta.url), 'utf8')
 
 const page: ExtractedPage = {

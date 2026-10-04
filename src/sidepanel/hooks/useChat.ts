@@ -31,7 +31,7 @@ export function useChat(tabId: number | null) {
     }
   }, [tabId])
 
-  // `editedIndex` is the turn being replaced: it and later turns go from the panel and, via `rewind`, from history.
+  // `editedIndex` is the turn being replaced: it and later turns go from the panel and history.
   async function ask(question: string, editedIndex?: number) {
     const trimmed = question.trim()
     if (tabId === null || stream.active || !trimmed) return
@@ -45,7 +45,7 @@ export function useChat(tabId: number | null) {
     // One call for every question; the model decides inside the loop whether to search.
     const result = await stream.start(tabId, trimmed, rewind || undefined)
     if (!result.ok) {
-      // A stopped answer isn't stored, so the question goes too, keeping the panel equal to history for later rewinds.
+      // A stopped answer isn't stored, so its question goes too, keeping the panel equal to history.
       if ('stopped' in result) setTurns(rewound)
       else setError(result.message)
       return
@@ -73,7 +73,7 @@ export function useChat(tabId: number | null) {
     setError(null)
   }
 
-  // Nothing streamed yet: show the pending indicator; the in-flight bubble has no source label until the loop reports its tool calls.
+  // Nothing streamed yet: show the pending indicator; the in-flight bubble has no source label yet.
   const hasStreamedText = stream.active && stream.text.length > 0
   const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
   const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null

@@ -21,7 +21,7 @@ export interface CreateTraceRecorderInput {
   contentEnabled: boolean
 }
 
-// Scratch state for one run; the loop sets the flags and hashes directly and they land unchanged on the trace.
+// Scratch state for one run; the loop sets flags and hashes directly and they land unchanged on the trace.
 export interface TraceRecorder {
   id: string
   tabId: number
@@ -121,7 +121,7 @@ export function finalizeTrace(recorder: TraceRecorder, outcome: FinalizeOutcome)
   }
 }
 
-// Diffing fingerprint, so runs compare without storing the prompt; `pageContent` is spliced out of the system prompt first, so hostname and charsOmitted still shift the hash.
+// Diffing fingerprint that avoids storing the prompt; `pageContent` is spliced out of the hashed text.
 export function fingerprintPrompt(systemPrompt: string, pageContent: string, tools: unknown): { promptHash: string; toolsHash: string } {
   const fixedPrompt = pageContent ? systemPrompt.split(pageContent).join('') : systemPrompt
   return {
@@ -148,7 +148,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-// Succeeded if no `error`, or cite_page's partial success (an error with a verified quote); every other error is a bare `{error}`.
+// Succeeded if no `error`, or cite_page's partial success (an error with a verified quote).
 function toolCallSucceeded(result: unknown): boolean {
   if (!isRecord(result) || !('error' in result)) return true
   return Array.isArray(result.verified) && result.verified.length > 0
@@ -164,7 +164,7 @@ function summarize(name: string, args: unknown, result: unknown): string {
   return error ? `error: ${error}` : `${name} called`
 }
 
-// Reclassifies rejected quotes with verifyQuotes' own threshold, since its error string is clipped to 80 chars (#18).
+// Reclassifies rejected quotes with verifyQuotes' own threshold, since its error string is clipped (#18).
 function summarizeCitePage(args: unknown, result: unknown): string {
   const quotes = isRecord(args) && Array.isArray(args.quotes) ? (args.quotes as string[]) : undefined
   const verified = isRecord(result) && Array.isArray(result.verified) ? (result.verified as string[]) : undefined

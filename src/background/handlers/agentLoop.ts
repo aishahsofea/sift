@@ -133,10 +133,10 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
 
     // Without a Tavily key the web tools can't run, so they aren't offered.
     const searchEnabled = Boolean(tavilyApiKey)
-    // Local, so a missing Tavily key keeps search_page; storage may be cleared, so check the text, not just `searchable` (#11).
+    // Local, so a missing Tavily key keeps search_page; storage may be cleared, so check the text (#11).
     const fullContent = page.truncated && page.searchable ? await getFullPageContent(tabId) : undefined
     const pageSearchEnabled = fullContent !== undefined
-    // A quote from a cut page's head can't show the answer wasn't about the cut part (deriveSource), so cite_page is off unless the rest is searchable.
+    // A head quote can't show the answer avoided the cut part (deriveSource), so cite_page needs the rest.
     const citeEnabled = !page.truncated || pageSearchEnabled
     const options = { searchEnabled, citeEnabled, pageSearchEnabled }
     const tools = toolsFor(options)
@@ -199,7 +199,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
         if (forcedRetried) recorder.forcedRetrySent = true
       }
 
-      // A cut fetch_page result adds search_page for the rest of the turn (#7); spliced here so citeEnabled stays tied to the tab page.
+      // A cut fetch_page result adds search_page for the turn (#7); spliced so citeEnabled tracks the tab.
       const roundTools = pageSearchEnabled || state.fetchedFullContent === undefined ? tools : [...tools, SEARCH_PAGE_TOOL]
 
       const roundStart = Date.now()
@@ -287,7 +287,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
   }
 }
 
-// Asks the model to quote first (ADR 0005): quoting an already-written answer finds merely related passages (#5). A web search exempts it; search_page doesn't, since it only returns page text.
+// Asks the model to quote first (ADR 0005): quoting a written answer finds merely related passages (#5).
 function mustQuoteFirst({ citeEnabled, state }: ToolContext): boolean {
   if (!citeEnabled || state.askedToQuote) return false
   if (!state.toolsCalled.every((name) => name === SEARCH_PAGE)) return false
@@ -306,7 +306,7 @@ async function finish(context: ToolContext, tabId: number, question: string, con
     throw new Error('The model returned an unparsed tool call instead of an answer.')
   }
 
-  // Derived from what happened, not the model's claim (ADR 0001); "page" needs a quote the handler found (ADR 0005).
+  // Derived from what happened, not the model's claim (ADR 0001); "page" needs a handler-found quote.
   const quotes = [...state.verifiedQuotes]
   const source = deriveSource({
     usedWeb: state.usedWeb,
@@ -315,7 +315,7 @@ async function finish(context: ToolContext, tabId: number, question: string, con
     quotedSearchResult: quotesFromSearch(state) > 0,
   })
 
-  // One object is persisted and posted so the panel matches a reload; the cut is flagged only if it still limits the answer.
+  // Persisted and posted as one object so the panel matches a reload; the cut is flagged only if it limits.
   const turn: ChatTurn = {
     role: 'assistant',
     content: answer,
@@ -370,7 +370,7 @@ function systemPromptText(messages: ChatMessage[]): string {
   return first?.role === 'system' && typeof first.content === 'string' ? first.content : ''
 }
 
-// One log line per answer, to tell why `unverified` happened on a real page (skipped, rejected, or tool not offered).
+// One log line per answer, to tell why `unverified` happened on a real page.
 function logTurn(trace: AgentTrace, state: LoopState): void {
   const toolsCalled = trace.rounds.flatMap((round) => round.toolCalls.map((call) => call.name))
   const offered = trace.toolsOffered ?? []
@@ -425,7 +425,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
     return { results, ...(citeEnabled ? { note: SEARCH_NOTE } : {}) }
   }
 
-  // Allowlist enforced here, not by prompt: page text is untrusted and a free-form URL is an exfiltration channel (ADR 0004).
+  // Allowlist enforced here, not by prompt: page text is untrusted, a free-form URL exfiltrates (ADR 0004).
   if (!state.allowedUrls.has(call.args.url)) {
     return { error: 'fetch_page only accepts URLs returned by search_site.' }
   }
@@ -445,7 +445,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   return { url: call.args.url, content: fetched.content, ...(note ? { note } : {}) }
 }
 
-// A cut fetch_page result takes priority over the tab page (#7); fetched passages never feed cite_page (ADR 0005).
+// A cut fetch_page result beats the tab page (#7); fetched passages never feed cite_page (ADR 0005).
 function searchWholePage({ port, page, pageSearchEnabled, fullContent, state }: ToolContext, query: string): unknown {
   if (state.fetchedFullContent !== undefined) {
     post(port, { type: 'ASK_STEP', step: { kind: 'scanning', query } })
@@ -479,7 +479,7 @@ function quotesFromSearch(state: LoopState): number {
   return [...state.verifiedQuotes].filter((quote) => state.passageTexts.some((text) => text.includes(quote))).length
 }
 
-// Fabricated quotes are a recoverable error, never the enforcement point (ADR 0005); once any verify, answer with those.
+// Fabricated quotes are a recoverable error, never the enforcement point (ADR 0005).
 function citePage({ port, citeEnabled, quotable, state }: ToolContext, quotes: string[]): unknown {
   if (!citeEnabled) {
     state.problems.push('cite_page is not available.')

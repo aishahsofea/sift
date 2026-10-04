@@ -22,7 +22,7 @@ export interface ExtractedPage {
   searchable?: boolean
 }
 
-// What ties an answer to supplied text, derived from what happened this turn, never the model's account (ADR 0001, ADR 0005); label rules in deriveSource.
+// What ties an answer to supplied text, derived from what happened, never the model's account (ADR 0001).
 export type AnswerSource = 'page' | 'web' | 'page+web' | 'unverified'
 
 export interface ChatTurn {
@@ -45,7 +45,7 @@ export interface ChatTurn {
   charsOmitted?: number
 }
 
-// What the loop is doing, emitted before each tool call; also keeps the port busy so the MV3 worker stays alive (ADR 0001).
+// What the loop is doing, emitted before each tool call; also keeps the port busy for the MV3 worker.
 export type AgentStep =
   | { kind: 'searching'; domain: string; query: string }
   | { kind: 'reading'; url: string }
@@ -59,7 +59,7 @@ export type UnreadableReason =
   | 'no-content'
   | 'unknown-error'
 
-// Text gated by the trace content toggle (off by default): `length` always recorded, `text` only when on (#18).
+// Text gated by the trace content toggle (off by default): `length` always recorded, `text` only when on.
 export interface TracedText {
   length: number
   text?: string
@@ -104,7 +104,7 @@ export interface AgentTraceRound {
   discardedAnswer?: TracedText
 }
 
-// Duplicates AnswerFacts in background/handlers/answerSource.ts because shared/ can't import background/; shows why deriveSource picked its label.
+// Duplicates AnswerFacts in background/handlers/answerSource.ts since shared/ can't import background/.
 export interface AgentTraceSourceFacts {
   usedWeb: boolean
   quoteVerified: boolean
@@ -121,7 +121,7 @@ export interface AgentTracePage {
   searchable: boolean
 }
 
-// One record per START_ASK run (#18), written as it goes; `page`, `toolsOffered` and the hashes are absent only for exits before a page loads.
+// One record per START_ASK run (#18), written as it goes; fields are absent only on exits before page load.
 export interface AgentTrace {
   id: string
   tabId: number

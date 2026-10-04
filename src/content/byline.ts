@@ -1,9 +1,9 @@
 import { BYLINE_CHAR_LIMIT } from '../shared/constants'
 
-// Byline blocks Readability misses (#6), most trustworthy first. On transformer-circuits.pub only `div.d-byline-container` is populated while the static `<d-byline>` stays empty; distill.pub is the reverse, so the class selector catches both.
+// Byline blocks Readability misses (#6), most trustworthy first; transformer-circuits and distill.pub differ.
 const BYLINE_BLOCK_SELECTORS = ['[class*="byline"]', 'd-byline']
 
-// Last resort: classes that usually mean a byline but may be a sidebar or wrapper; the length cap in normaliseByline rejects wrong matches.
+// Last resort: classes that usually mean a byline but may be a sidebar; normaliseByline's length cap rejects.
 const GENERIC_SELECTORS = [
   '[itemprop="author"]',
   '[rel="author"]',
@@ -67,7 +67,7 @@ export function normaliseByline(raw: string | null | undefined, limit: number = 
   return normalised
 }
 
-// Distill's byline template before its script fills it; the content script can run mid-render, and "Not published yet" is worse than no byline.
+// Distill's byline template before its script fills it; "Not published yet" is worse than no byline.
 const UNFILLED_TEMPLATE = /not published yet|no doi yet/i
 
 function textOf(doc: Document, selector: string): string | undefined {

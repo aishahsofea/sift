@@ -1,4 +1,4 @@
-// Tool definitions and loop-ending text are verified prompt surface: changing the wording means re-running `npm run test:tools` and updating its copy.
+// Tool definitions and loop-ending text are verified prompt surface: re-run `npm run test:tools` on change.
 
 export const SEARCH_SITE = 'search_site'
 export const FETCH_PAGE = 'fetch_page'
@@ -41,7 +41,7 @@ const SEARCH_TOOLS = [
   },
 ] as const
 
-// The model quotes the page before answering and the handler checks each quote (ADR 0005); needs no network.
+// The model quotes the page before answering and the handler checks each quote (ADR 0005); no network.
 export const CITE_TOOL = {
   type: 'function',
   function: {
@@ -63,7 +63,7 @@ export const CITE_TOOL = {
   },
 } as const
 
-// Local keyword search of the whole page (#11, ADR 0006); also offered once a fetch_page result comes back cut (#7). Cut-off text gets reserved slots (searchPage).
+// Local keyword search of the whole page (#11, ADR 0006); also offered once a fetch_page result is cut (#7).
 export const SEARCH_PAGE_TOOL = {
   type: 'function',
   function: {
@@ -83,7 +83,7 @@ export const SEARCH_PAGE_TOOL = {
   },
 } as const
 
-// cite_page next to search_page: passages it returned are page text and citable; kept apart from CITE_TOOL to leave its verified wording alone (ADR 0005).
+// cite_page beside search_page: its passages are citable; kept apart from CITE_TOOL's wording (ADR 0005).
 export const CITE_TOOL_CUT = {
   ...CITE_TOOL,
   function: {
@@ -103,37 +103,37 @@ export const CITE_TOOL_CUT = {
   },
 } as const
 
-// Appended to search_site and fetch_page results, which the model reads last: this cut wasted cite_page calls after a search (ADR 0005) and got the page read after a snippet (#7, ADR 0009).
+// Appended to search_site and fetch_page results, which the model reads last (ADR 0005, 0009).
 export const SEARCH_NOTE =
   "These are search results, not the page content, so cite_page can't check them. If a snippet has the answer, use it now. If none does, call fetch_page with that result's URL to read it in full, or search again with a better query."
 export const FETCH_NOTE =
   "This is the full text of a fetched page, not the page content the user is viewing, so cite_page can't check it. Answer from it now."
 
-// FETCH_NOTE's cut counterpart (#7); shown even without cite_page, as the only place the model learns the fetch was cut.
+// FETCH_NOTE's cut counterpart (#7); shown even without cite_page, the only place the cut is announced.
 export function FETCH_NOTE_CUT(charsOmitted: number): string {
   const omitted = charsOmitted.toLocaleString('en-US')
   return `This is the fetched page, not the page content the user is viewing, so cite_page can't check it either way. It is cut off too: its last ${omitted} characters are not included. If it doesn't have the answer, call search_page with words from the missing part to reach it.`
 }
 
-// cite_page result text (ADR 0005): the error carries a retry hint; once anything verifies the result says to stop, since more calls only cost rounds.
+// cite_page result text (ADR 0005): errors carry a retry hint; once anything verifies, it says stop.
 export const CITE_RECOVERY_HINT =
   "Copy each passage exactly as it appears in the page content. If the page doesn't say it, don't cite it. Search results can't be cited."
 export const CITE_DONE_NOTE = "All of these are on the page. Answer now from them, in your own words. Don't call cite_page again."
 export const CITE_PARTIAL_NOTE = "Only the verified passages are on the page. Answer now using only those, and don't call cite_page again."
-// Sent for one request when a page question was answered without cite_page; leaves room to say the page doesn't cover it.
+// Sent for one request when a page question was answered without cite_page; leaves room to say not covered.
 export const CITE_NUDGE =
   "Before you answer, call cite_page with up to three short passages from the page content that support your answer, copied word for word. If the page content doesn't cover the question, say so instead."
 // Same ask on a cut page, where the way out includes searching the rest.
 export const CITE_NUDGE_CUT =
   "Before you answer, call cite_page with up to three short passages from the page that support your answer, copied word for word. If the passages are in the part that is cut off, call search_page for them first. If the page doesn't cover the question, say so instead."
 
-// search_page result text, read last to turn what it found into a quote and an answer, not more searches (ADR 0005, ADR 0006).
+// search_page result text, read last to turn findings into a quote and answer, not more searches (ADR 0005).
 export const PAGE_SEARCH_NOTE =
   'These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.'
 export const PAGE_SEARCH_EMPTY_NOTE =
   'Nothing on the page matches those words. Search again with different words, or answer from what you have.'
 
-// search_page notes for a fetched page: no quote request, since cite_page never checks fetched content (ADR 0005); same shape as SEARCH_NOTE.
+// search_page notes for a fetched page: no quote request, since cite_page never checks fetched content.
 export const PAGE_SEARCH_NOTE_FETCHED =
   "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words."
 export const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
@@ -167,7 +167,7 @@ export const REQUIRED_TOOL_ARGS: Record<string, Record<string, ArgKind>> = {
   [SEARCH_PAGE]: { query: 'string' },
 }
 
-// One-off user message on the forced final call, with `tools` omitted; neither alone stops raw tool-call markup (ADR 0003).
+// One-off user message on the forced final call, with `tools` omitted; neither alone stops markup (ADR 0003).
 export const FORCE_NUDGE =
   "You've used all your searches. Answer now from the page and the results above. If they don't cover the question, say you couldn't find it."
 
@@ -178,7 +178,7 @@ export const FORCE_NUDGE_CITE =
 // One more try, for that request only, when the forced round still returns a tool call.
 export const FORCE_RETRY = 'Do not call any tool. Write your answer as plain text now.'
 
-// Tool-call syntax in `content` means no tool parser ran (ADR 0003); a final answer carrying it is a failure.
+// Tool-call syntax in `content` means no tool parser ran (ADR 0003); a final answer with it is a failure.
 const TOOL_MARKUP = /<\/?tool_?call>|<TOOLCALL>|<function[=\s>]/i
 
 export function containsToolMarkup(text: string): boolean {

@@ -14,7 +14,7 @@ function historyStorageKey(tabId: number): string {
   return `sift:history:${tabId}`
 }
 
-// Stores the page and, if cut, its whole text; `searchable` says whether the text is there. Storage can fail (10 MB session quota), then the page goes in alone, as before #11; a new page clears the old text.
+// Stores the page and, if cut, its whole text; if storage fails (10 MB quota) the page goes in alone.
 export async function setExtractedPage(tabId: number, page: ExtractedPage, fullContent?: string): Promise<ExtractedPage> {
   if (page.truncated && fullContent !== undefined) {
     const searchable = { ...page, searchable: true }
@@ -57,7 +57,7 @@ export async function appendHistoryTurns(tabId: number, turns: ChatTurn[]): Prom
   return updated
 }
 
-// Counted from the end since stored history is capped at MAX_HISTORY_TURNS; used by edit-and-resend (#46) and regenerate (#43).
+// Counted from the end since history is capped at MAX_HISTORY_TURNS; for edit-and-resend and regenerate.
 export async function dropLastHistoryTurns(tabId: number, count: number): Promise<ChatTurn[]> {
   const existing = await getHistory(tabId)
   const kept = existing.slice(0, Math.max(0, existing.length - count))
@@ -69,7 +69,7 @@ export async function clearHistory(tabId: number): Promise<void> {
   await chrome.storage.session.remove(historyStorageKey(tabId))
 }
 
-// Tab ids aren't reused, so nothing else would remove a closed tab's data, which now includes a whole page.
+// Tab ids aren't reused, so nothing else would remove a closed tab's data, which includes a whole page.
 export async function clearTabData(tabId: number): Promise<void> {
   await chrome.storage.session.remove([pageStorageKey(tabId), fullTextStorageKey(tabId), historyStorageKey(tabId)])
 }

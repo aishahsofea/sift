@@ -5,7 +5,7 @@ import { setExtractedPage } from '../history/sessionHistory'
 const EXTRACTION_TIMEOUT_MS = 5000
 
 export async function extractPage(tabId: number): Promise<BackgroundResponse> {
-  // Registered before executeScript: the injected script can send its message before executeScript resolves.
+  // Registered before executeScript: the injected script can message before executeScript resolves.
   const pending = createContentScriptMessageWaiter(tabId)
 
   try {

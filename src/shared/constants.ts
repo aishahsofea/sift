@@ -1,12 +1,12 @@
 export const TRUNCATION_CHAR_LIMIT = 120_000
 
-// A longer candidate means the selector matched a page wrapper, so it's rejected, not truncated (src/content/byline.ts).
+// A longer candidate means the selector matched a page wrapper, so it's rejected, not truncated.
 export const BYLINE_CHAR_LIMIT = 1_000
 
 // 20 turns = 10 user/assistant pairs of prior context sent with each new question.
 export const MAX_HISTORY_TURNS = 20
 
-// Tighter than MAX_HISTORY_TURNS: runs carry more text per round with trace content on, and chrome.storage.session shares a 10 MB quota (#18).
+// Tighter than MAX_HISTORY_TURNS: traces carry more text per round and the session quota is 10 MB (#18).
 export const MAX_TRACE_RUNS = 15
 
 // Tool rounds before the loop forces an answer (ADR 0001, ADR 0003); cite_page rounds count (ADR 0005).
@@ -18,10 +18,10 @@ export const MIN_QUOTE_CHARS = 10
 // Caps what one fetch_page round adds to a context that may already hold TRUNCATION_CHAR_LIMIT chars.
 export const FETCHED_PAGE_CHAR_LIMIT = 20_000
 
-// Most of a page kept whole for search_page and cite_page (#11, ADR 0006); all or nothing, sized to fit a few in the 10 MB session quota.
+// Most of a page kept whole for search_page and cite_page (#11, ADR 0006); all or nothing.
 export const RETAINED_PAGE_CHAR_LIMIT = 1_000_000
 
-// Passage window width; at most PAGE_SEARCH_MAX_PASSAGES per call stays well under FETCHED_PAGE_CHAR_LIMIT. Even, so windows overlap by half.
+// Passage window width; PAGE_SEARCH_MAX_PASSAGES stays under FETCHED_PAGE_CHAR_LIMIT. Even, for half overlap.
 export const PAGE_SEARCH_PASSAGE_CHARS = 1_500
 export const PAGE_SEARCH_MAX_PASSAGES = 4
 // Slots reserved past the prompt's cut so a head full of the word can't hide the section past it.

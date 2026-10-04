@@ -11,7 +11,7 @@ import {
   pricingResults,
 } from './fixtures/fictionalProductPage'
 
-// Real runAgentLoop with the same three seams faked as agentLoop.test.ts; streamAgentTurn is live (issue #3).
+// Real runAgentLoop with the same three seams faked as agentLoop.test.ts; streamAgentTurn is live.
 vi.mock('../background/history/sessionHistory', () => ({
   getExtractedPage: vi.fn(),
   getFullPageContent: vi.fn(),
@@ -68,7 +68,7 @@ describe('off-page: needs a search', () => {
       expect(error, error).toBeUndefined()
       expect(turn?.source, JSON.stringify(turn)).toBe('web')
       expect(stepKinds).toContain('searching')
-      // Soft: ADR 0005 measured 0/7, and a stray cite_page call that lands on the right label isn't worth failing; logged, not asserted.
+      // Soft: a stray cite_page call that lands on the right label isn't worth failing (ADR 0005).
       if (stepKinds.includes('citing')) {
         console.warn(`[eval] off-page run ${i + 1} called cite_page too (label was still ${turn?.source})`)
       }
@@ -89,9 +89,9 @@ describe('partial: needs the page and the web together', () => {
       recordRun({ category: 'partial', label: partialQuestion, turn, error, elapsedMs, stepKinds })
 
       expect(error, error).toBeUndefined()
-      // 'web' alone is also correct: the model sometimes answers the page fact without cite_page (live 2026-09-27), which earns no page credit (ADR 0005).
+      // 'web' alone is also correct: answering the page fact without cite_page earns no page credit.
       expect(['web', 'page+web'], JSON.stringify(turn)).toContain(turn?.source)
-      // Only when a page quote is claimed: the model quotes a shorter or longer real substring (e.g. "2,400 beta testers"), so check the key figure, not the whole sentence.
+      // Only when a page quote is claimed: quotes vary in length; check the figure.
       if (turn?.source === 'page+web') {
         expect(turn?.quotes?.some((q) => q.includes('2,400')), JSON.stringify(turn)).toBe(true)
       }

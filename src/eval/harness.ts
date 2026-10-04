@@ -20,7 +20,7 @@ function requireNebiusApiKey(): string {
   return key
 }
 
-// Logged once per file so output states which model the numbers are about (ADR 0002 asks to re-measure before any switch).
+// Logged once per file so output states which model the numbers are about (ADR 0002).
 let modelLogged = false
 async function ensureModelLogged(apiKey: string): Promise<void> {
   if (modelLogged) return
@@ -51,7 +51,7 @@ export interface RunCaseResult {
 
 let tabCounter = 0
 
-// Drives the real runAgentLoop with only sessionHistory, keys and tavily/client faked; streamAgentTurn is live, since it is what's measured.
+// Drives the real runAgentLoop with sessionHistory, keys and tavily/client faked; streamAgentTurn is live.
 export async function runCase(input: RunCaseInput): Promise<RunCaseResult> {
   const { page, fullContent, question, history = [], tavilyApiKey, searchResults, extractResult } = input
   const nebiusApiKey = requireNebiusApiKey()
@@ -84,7 +84,7 @@ export async function runCase(input: RunCaseInput): Promise<RunCaseResult> {
   return { turn: done?.turn, posted, error: failed?.message, elapsedMs }
 }
 
-// 'citing' fires when cite_page ran or when the loop nudges for an uncited answer, so it isn't proof of a call; turn.quotes / turn.source settle that.
+// 'citing' fires when cite_page ran or the loop nudged for an uncited answer; turn.quotes settles it.
 export function stepKindsOf(posted: AskPortMessage[]): string[] {
   return posted.filter((m): m is Extract<AskPortMessage, { type: 'ASK_STEP' }> => m.type === 'ASK_STEP').map((m) => m.step.kind)
 }
@@ -104,7 +104,7 @@ export function recordRun(record: CaseRecord): void {
   records.push(record)
 }
 
-// Soft telemetry (label distribution, quote pass rate, rounds/latency), printed not asserted since one run's mean proves nothing; tool-call correctness is asserted by the tests.
+// Soft telemetry (labels, quote pass rate, latency), printed not asserted since one run proves nothing.
 export function printSummary(): void {
   const byCategory = new Map<string, CaseRecord[]>()
   for (const record of records) {

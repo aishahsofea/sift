@@ -3,7 +3,7 @@ import { MIN_QUOTE_CHARS } from '../../shared/constants'
 // Enough of a rejected quote to recognise it, not a second copy of a long passage.
 const ECHOED_QUOTE_CHARS = 80
 
-// Collapses whitespace so quotes survive line wrapping; `\s` covers the U+00A0/U+202F spaces Nemotron puts in dates.
+// Collapses whitespace so quotes survive line wrapping; `\s` covers the U+00A0/U+202F Nemotron puts in dates.
 export function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
@@ -15,7 +15,7 @@ export interface QuoteCheck {
   errors: string[]
 }
 
-// A quote counts only if it is a verbatim, case-sensitive substring of the page text after collapsing (ADR 0005); ellipses and paraphrases fail.
+// A quote counts only if it is a verbatim, case-sensitive substring of the collapsed page text (ADR 0005).
 export function verifyQuotes(pageText: string, quotes: string[]): QuoteCheck {
   const haystack = collapseWhitespace(pageText)
   const verified: string[] = []

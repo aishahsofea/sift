@@ -10,7 +10,7 @@ export function describeTruncatedPage(charsOmitted: number, searchable: boolean)
     : `The last ${characters(charsOmitted)} of this page weren't read, so answers about that part can't come from the page.`
 }
 
-// On an answer where the model never looked past the cut: it didn't search, or there was nothing to search.
+// On an answer where the model never looked past the cut: it didn't search, or nothing was searchable.
 export function describeTruncatedAnswer(charsOmitted: number): string {
   return `Page was cut off: ${characters(charsOmitted)} weren't read.`
 }

@@ -48,7 +48,7 @@ const wholePage: ExtractedPage = {
   charsOmitted: 0,
 }
 
-// Cut short with the rest not kept: how long pages were handled before #11, and when the whole is too big or storing it fails.
+// Cut short with the rest not kept: pages handled as before #11, or when the whole is too big.
 const truncatedPage: ExtractedPage = { ...wholePage, truncated: true, charsOmitted: 126_323 }
 
 // Cut short with the rest kept (#11): the answering section is past `wholePage.content`.
@@ -251,7 +251,7 @@ describe('quote-then-answer (ADR 0005)', () => {
   })
 })
 
-// A tool-less page answer has nothing to verify, and quoting afterwards would cite passages merely related to it (#5), so it's discarded and the model asked to quote first (ADR 0005).
+// A tool-less page answer has nothing to verify (#5): discard it and ask the model to quote first (ADR 0005).
 describe('an answer with no cite_page call on a whole page', () => {
   const chunks = (posted: AskPortMessage[]) =>
     posted.filter((m): m is Extract<AskPortMessage, { type: 'ASK_CHUNK' }> => m.type === 'ASK_CHUNK').map((m) => m.delta)
@@ -363,7 +363,7 @@ describe('an answer with no cite_page call on a whole page', () => {
   })
 })
 
-// On real pages the model still reached for cite_page in the tool-less last round, which used to be a user-facing error.
+// The model reached for cite_page in the tool-less last round, which used to be a user-facing error.
 describe('the forced final round', () => {
   const spent = () => Array.from({ length: MAX_TOOL_ROUNDS }, (_, i) => search(`query ${i}`))
 
@@ -479,7 +479,7 @@ describe('with a web result', () => {
   })
 })
 
-// A fetch_page result can come back cut (#7); search_page reaches its rest and takes priority over a cut tab page.
+// A fetch_page result can come back cut (#7); search_page reaches its rest and beats a cut tab page.
 describe('a fetched page that comes back cut (#7)', () => {
   const results = [{ title: 'Board pruning', url: 'https://loomkit.example/help/board-pruning', content: 'An overview of board pruning.' }]
   // Longer than FETCHED_PAGE_CHAR_LIMIT, with the answer past the cut.
@@ -637,7 +637,7 @@ describe('which tools a round is offered', () => {
   })
 })
 
-// `unverified` looks the same whether cite_page was skipped, all quotes rejected, or the tool not offered; the log tells them apart.
+// `unverified` looks the same whether cite_page was skipped, rejected or not offered; the log differs.
 describe('the log line', () => {
   it('says a quoted answer was quoted', async () => {
     scriptModel(cite(QUOTE), answer('1,200.'))
@@ -696,7 +696,7 @@ describe('the log line', () => {
   })
 })
 
-// The head plus search_page, with quotes checked against the whole page; the answering section is past the cut (#5, #11, ADR 0006).
+// The head plus search_page, quotes checked against the whole page; the answer is past the cut (#5).
 describe('a cut-short page whose rest was kept', () => {
   const chunks = (posted: AskPortMessage[]) =>
     posted.filter((m): m is Extract<AskPortMessage, { type: 'ASK_CHUNK' }> => m.type === 'ASK_CHUNK').map((m) => m.delta)
@@ -837,7 +837,7 @@ describe('a cut-short page whose rest was kept', () => {
       await ask()
 
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page', 'cite_page'])
-      // Distinct from the fetch-escalation clause (#7), which mentions search_page here too: checks the tab-page instruction is absent.
+      // Distinct from the fetch-escalation clause (#7), which also mentions search_page: no tab-page text.
       expect(modelCalls[0].messages[0].content).not.toContain('call search_page to find them first')
     })
 
@@ -1074,7 +1074,7 @@ describe('a cut-short page whose rest was kept', () => {
       const { turn } = await ask()
 
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page'])
-      // Distinct from the fetch-escalation clause (#7), which mentions search_page here too: checks the tab-page instruction is absent.
+      // Distinct from the fetch-escalation clause (#7), which also mentions search_page: no tab-page text.
       expect(modelCalls[0].messages[0].content).not.toContain('call search_page to find them first')
       expect(modelCalls[0].messages[0].content).not.toContain('cite_page')
       expect(turn).toMatchObject({ source: 'unverified', truncated: true })

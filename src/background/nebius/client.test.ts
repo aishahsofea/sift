@@ -4,7 +4,7 @@ import { streamAgentTurn } from './client'
 
 vi.mock('./modelDiscovery', () => ({ resolveNemotronModel: vi.fn().mockResolvedValue('test-model') }))
 
-// A reader driven by hand: read() stays pending until push()/end() and rejects with the signal's abort reason, like a real body read.
+// A hand-driven reader: read() stays pending until push()/end() and rejects with the signal's abort reason.
 function fakeBody(signal: AbortSignal) {
   let pending: { resolve: (r: { done: boolean; value?: Uint8Array }) => void; reject: (e: unknown) => void } | undefined
 
@@ -83,7 +83,7 @@ describe('streamAgentTurn idle timeout (#28)', () => {
     const promise = streamAgentTurn('key', [], { onContent: vi.fn() })
     await vi.advanceTimersByTimeAsync(0)
 
-    // 5 gaps of (idle window - 1s) sum to ~2.5x the window: shows the timeout is silence-based, not a flat cap.
+    // 5 gaps of (idle window - 1s) sum to ~2.5x the window: the timeout is silence-based, not a flat cap.
     for (let i = 0; i < 5; i++) {
       await vi.advanceTimersByTimeAsync(NEBIUS_STREAM_IDLE_TIMEOUT_MS - 1000)
       push(sseLine(`chunk${i} `))

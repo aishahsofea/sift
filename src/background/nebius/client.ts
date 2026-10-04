@@ -10,7 +10,7 @@ export interface AgentTurn {
   content: string
   /** Unvalidated: names and arguments are whatever the model sent. */
   toolCalls: RawToolCall[]
-  // All five fields are optional so scripted `{content, toolCalls}` turns in agentLoop.test.ts keep typechecking (#18).
+  // All five fields are optional so scripted `{content, toolCalls}` turns in tests typecheck (#18).
   /** resolveNemotronModel's pick for this round. */
   model?: string
   /** Absent when Nebius doesn't report usage for this round — never zeroed. */
@@ -42,7 +42,7 @@ export async function streamAgentTurn(
   const startedAt = Date.now()
   const model = await resolveNemotronModel(apiKey, baseUrl)
 
-  // Aborts on silence, not total duration (#28); re-armed on every sign of life so a long answer can stream.
+  // Aborts on silence, not total duration (#28); re-armed on every sign of life so long answers can stream.
   const controller = new AbortController()
   signal?.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
   if (signal?.aborted) controller.abort(signal.reason)
@@ -81,7 +81,7 @@ export async function streamAgentTurn(
 
     let firstByteAt: number | undefined
     let content = ''
-    // Nemotron uses `reasoning`, other wrappers `reasoning_content` (AGENTS.md). Trace only; never reaches the panel or history.
+    // Nemotron uses `reasoning`, other wrappers `reasoning_content` (AGENTS.md); trace only, never shown.
     let reasoning = ''
     let usage: TokenUsage | undefined
     let finishReason: string | undefined
@@ -139,7 +139,7 @@ export async function streamAgentTurn(
       if (reasoningDelta) reasoning += reasoningDelta
 
       if (delta.content) {
-        // A tool round still emits a whitespace-only content delta, and a real answer starts with "\n"; drop leading whitespace here, not downstream.
+        // A tool round still emits a whitespace-only delta, and a real answer starts with "\n"; drop it here.
         const emit = content === '' ? delta.content.replace(/^\s+/, '') : delta.content
         if (emit) {
           content += emit

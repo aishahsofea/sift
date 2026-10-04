@@ -9,7 +9,7 @@ export interface TavilySearchResult {
   content: string
 }
 
-// The model writes the query; the domain is pinned from the page URL, never model input (ADR 0001, ADR 0004).
+// The model writes the query; the domain is pinned from the page URL, never model input (ADR 0001, 0004).
 export async function searchTavily(apiKey: string, query: string, pageUrl: string, baseUrl = TAVILY_BASE_URL, signal?: AbortSignal): Promise<TavilySearchResult[]> {
   const res = await withRetry(`${baseUrl}/search`, {
     method: 'POST',
@@ -33,7 +33,7 @@ export async function searchTavily(apiKey: string, query: string, pageUrl: strin
   return (body.results ?? []).map((r) => ({ title: r.title, url: r.url, content: r.content }))
 }
 
-// Whole text of one result, for when its snippet wasn't enough; only URLs from this turn's search (ADR 0004). Uncut: runTool decides how much fits (#7).
+// Whole text of one result when its snippet wasn't enough; only URLs from this turn's search (ADR 0004).
 export async function extractTavily(apiKey: string, url: string, baseUrl = TAVILY_BASE_URL, signal?: AbortSignal): Promise<string> {
   const res = await withRetry(`${baseUrl}/extract`, {
     method: 'POST',

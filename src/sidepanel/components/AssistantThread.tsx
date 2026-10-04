@@ -35,7 +35,7 @@ function Message() {
     charsOmitted?: number
   }
 
-  // assistant-ui adds an empty running message on send; the pending indicator covers it, so skip the empty bubble.
+  // assistant-ui adds an empty running message on send; the pending indicator covers it, so skip it.
   const isEmpty = useAuiState((s) => s.message.role === 'assistant' && s.message.parts.every((p) => p.type !== 'text' || !p.text))
   const isLast = useAuiState((s) => s.message.isLast)
   const isEditing = useAuiState((s) => s.message.composer.isEditing)

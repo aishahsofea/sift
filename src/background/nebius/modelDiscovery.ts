@@ -1,6 +1,6 @@
 import { NEBIUS_BASE_URL } from '../../shared/constants'
 
-// Live-checked IDs in preference order: Nano first (ADR 0002), then Super, which was correct but slower and uncached. Untested Nemotrons are reached only via the fallback.
+// Live-checked IDs in preference order: Nano first (ADR 0002), then Super; untested ones only as fallback.
 const NEMOTRON_CANDIDATES = [
   'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
   'nvidia/nemotron-3-super-120b-a12b',

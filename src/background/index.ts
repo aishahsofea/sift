@@ -6,7 +6,7 @@ import { getApiKeys } from './keys'
 
 const SIDE_PANEL_PATH = 'src/sidepanel/index.html'
 
-// Tab-scoped (#14): a manifest `default_path` would share one panel across tabs, so the panel is opened here with `?tabId=` (read by useActiveTab). setOptions isn't awaited: open() must run synchronously in the click, after setOptions (chrome-extensions-samples#987).
+// Tab-scoped (#14): the panel opens here with `?tabId=`; setOptions isn't awaited so open() stays sync.
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id === undefined) return
   const tabId = tab.id
@@ -18,7 +18,7 @@ chrome.action.onClicked.addListener((tab) => {
     .catch((error) => console.error(`[Sift] Failed to open side panel for tab ${tabId}:`, error))
 })
 
-// A closed tab's page, whole text and history go with it; needs no `tabs` permission since it reads only the id.
+// A closed tab's page, whole text and history go with it; reads only the id, so no `tabs` permission.
 chrome.tabs.onRemoved.addListener((tabId) => {
   clearTabData(tabId).catch((error) => console.error(`[Sift] couldn't clear tab ${tabId}:`, error))
 })
@@ -32,7 +32,7 @@ chrome.runtime.onConnect.addListener((port) => {
   })
 })
 
-// Registered at the top level so a revived service worker re-attaches before Chrome dispatches a queued event.
+// Top level, so a revived service worker re-attaches before Chrome dispatches a queued event.
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
   switch (message.type) {
     case 'EXTRACT_PAGE':

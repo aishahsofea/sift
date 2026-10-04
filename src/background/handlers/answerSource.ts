@@ -11,9 +11,9 @@ interface AnswerFacts {
   quotedSearchResult: boolean
 }
 
-// Label from what happened, not what the model said (ADR 0001); `page` needs a verified quote (ADR 0005), a floor not proof every claim is on the page.
+// Label from what happened, not what the model said (ADR 0001); `page` needs a verified quote (ADR 0005).
 export function deriveSource({ usedWeb, quoteVerified, pageTruncated, quotedSearchResult }: AnswerFacts): AnswerSource {
-  // On a cut page only a quote from a search_page passage counts: quoting the head can't show the answer wasn't about the cut part (#5, ADR 0006).
+  // On a cut page only a search_page quote counts: a head quote can't show the cut was read (#5, ADR 0006).
   const pageQuoted = quoteVerified && (!pageTruncated || quotedSearchResult)
   if (usedWeb) return pageQuoted ? 'page+web' : 'web'
   return pageQuoted ? 'page' : 'unverified'

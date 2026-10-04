@@ -10,7 +10,7 @@ import {
   truncatedTailQuestion,
 } from './fixtures/transformerCircuitsBiology'
 
-// Real runAgentLoop with the usual three seams faked; Tavily is stubbed to throw, so a stray real call fails loudly.
+// Real runAgentLoop with the usual three seams faked; Tavily throws, so a stray real call fails loudly.
 vi.mock('../background/history/sessionHistory', () => ({
   getExtractedPage: vi.fn(),
   getFullPageContent: vi.fn(),
@@ -38,14 +38,14 @@ afterAll(() => {
   printSummary()
 })
 
-// Fails fast, with no API calls, if a regressed fixture no longer reproduces #5's shape (see transformerCircuitsBiology.ts).
+// Fails fast, with no API calls, if a regressed fixture no longer reproduces #5's shape.
 describe('fixture integrity', () => {
   it('still reproduces the #5 shape: jailbreak body past the cut, abstract within it', () => {
     expect(() => assertFixtureIntegrity()).not.toThrow()
   })
 })
 
-// Cases 5 and 6 (issue #3) on the #5 page: (5) zero-tolerance, a 'page' label with no real mechanism in the content is false; (6) partly-grounded, the answer mustn't invent the attack's specifics. Both match REAL_MECHANISM_RE, not a wrong-shape regex, which proved negation-blind live. 3x repeats: this is the metric ADR 0007 exists to report.
+// Cases 5 and 6 (issue #3) on the #5 page: a 'page' label without the real mechanism is false (ADR 0007).
 const TAIL_REPEATS = getRepeatCount() * 3
 
 describe('truncated-tail / partly-grounded: #5 itself', () => {
@@ -60,7 +60,7 @@ describe('truncated-tail / partly-grounded: #5 itself', () => {
       recordRun({ category: 'truncated-tail', label: truncatedTailQuestion, turn, error, elapsedMs, stepKinds })
 
       if (error) {
-        // A thrown loop is a robustness failure counted in the summary, a different metric from whether a produced label was backed; it isn't ignored (see `records` and logTurn).
+        // A thrown loop is a robustness failure counted in the summary, not ignored (see `records`, logTurn).
         console.warn(`[eval] truncated-tail run ${i + 1} errored rather than answering: ${error}`)
         return
       }
@@ -74,7 +74,7 @@ describe('truncated-tail / partly-grounded: #5 itself', () => {
           true,
         )
       }
-      // Gate 6: a confident, specific answer without the real mechanism is a fabrication whatever its label, unless it's an honest abstention.
+      // Gate 6: a confident, specific answer without the real mechanism is a fabrication unless it abstains.
       if (!ABSTENTION_RE.test(content)) {
         expect(
           groundedInReal,
@@ -97,9 +97,9 @@ describe('false abstention: answerable from well within the head', () => {
       recordRun({ category: 'false-abstention', label: falseAbstentionQuestion, turn, error, elapsedMs, stepKinds })
 
       expect(error, error).toBeUndefined()
-      // Not source === 'page': on a cut page ADR 0006 caps the label at 'unverified' unless a quote came from search_page. This checks the model engaged and answered instead.
+      // Not 'page': on a cut page ADR 0006 caps the label at 'unverified' without a search_page quote.
       expect(turn?.quotes?.length ?? 0, JSON.stringify(turn)).toBeGreaterThan(0)
-      // Soft: live 2026-09-27, 3/5 skipped search and 2/5 searched and still landed a correct 'page' label; an extra round, not a wrong answer.
+      // Soft: skipping search, or searching and still landing a correct 'page' label, costs a round only.
       if (stepKinds.includes('scanning')) {
         console.warn(`[eval] false-abstention run ${i + 1} searched anyway (label was still ${turn?.source})`)
       }

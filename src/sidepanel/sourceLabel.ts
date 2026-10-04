@@ -4,7 +4,7 @@ const LABELS: Record<AnswerSource, string> = {
   page: 'from the page',
   web: 'from the web',
   'page+web': 'from the page and the web',
-  // Says what happened, not a verdict: worded as a warning it read as an accusation on fine answers (ADR 0005).
+  // Says what happened, not a verdict: worded as a warning it read as an accusation (ADR 0005).
   unverified: 'not checked against the page',
 }
 
@@ -13,7 +13,7 @@ interface SourceContext {
   truncated?: boolean
 }
 
-// A page label shows how many quotes were checked, since one quote doesn't prove every claim is on the page (ADR 0005).
+// A page label shows how many quotes were checked, since one quote doesn't prove every claim (ADR 0005).
 export function describeSource(source: AnswerSource, quotes: readonly string[] = [], { truncated }: SourceContext = {}): string {
   if (source === 'unverified' && truncated) return 'not checked · page was cut short'
   const label = LABELS[source]
