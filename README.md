@@ -68,56 +68,68 @@ produces a `dist/` directory.
 ## Using it
 
 Open any regular `http(s)://` page, then ask a question in the side panel.
+Answers stream in as they're written.
 
-The model decides for itself whether the page answers the question. When it
-doesn't, it searches the current site — writing its own query, so a follow-up
-like "what else have they written?" is searched under the author's name rather
-than the pronoun — and can pull up a full result page when a snippet isn't
-enough. It gets three rounds of that before it has to answer with whatever it
-has. The side panel names each search as it runs, and every answer is labeled
-from what actually happened, not from what the model says it did: **from the
-web** when a search returned something, **from the page** when the model quoted
-the page before answering and at least one quote was found word for word in the
-page text, **from the page and the web** when both hold, and a grey **not
-checked** when nothing ties the answer to the page (see below).
+### Where answers come from
 
-Answering from the page takes an extra round: the model calls `cite_page` with
-up to three short passages that support its answer, and Sift checks each one
-against the page text in code, not by asking a model. A quote that isn't there
-comes back to the model as an error to correct; once one is found, the model is
-told to answer, and any quote that wasn't found is left out of the answer. An
-answer written without calling `cite_page` is thrown away unseen and the model is
-asked once to quote first. The chip says how many quotes were checked, not that
-the answer was, because one verified quote shows the page was quoted and not that
-every claim in the answer is on it. An answer with no verified quote is
-**not checked**, which is not the same as wrong. Each answer also logs one line to
-the service worker console saying why it got its label. See
+The model decides whether the page answers your question. If it doesn't, the
+model searches the current site.
+
+- It writes its own query, so "what else have they written?" is searched under
+  the author's name, not the pronoun.
+- It can open a full result page when a snippet isn't enough.
+- It gets three rounds of searching, then answers with what it has.
+- The panel names each search as it runs.
+
+### Answer labels
+
+Every answer is labeled from what actually happened, not from what the model
+says it did.
+
+| Label | Meaning |
+| --- | --- |
+| **from the page** | The model quoted the page, and at least one quote was found word for word in the page text. |
+| **from the web** | A search returned something. |
+| **from the page and the web** | Both of the above. |
+| **not checked** (grey) | Nothing ties the answer to the page. This is not the same as wrong. |
+
+The chip says how many quotes were checked, not that the answer was: one
+verified quote shows the page was quoted, not that every claim is on it.
+
+To answer from the page, the model must first quote it. Sift checks each quote
+against the page text in code, not with a model. An answer written without
+quoting is thrown away, and the model is asked once to quote first. Each
+answer logs one line to the service worker console saying why it got its
+label. Details are in
 [ADR 0005](docs/adr/0005-grounding-is-verified-not-assumed.md).
 
-Only the first 120,000 characters of a page go into the prompt. For a longer page
-(up to 1,000,000 characters) Sift keeps the whole text in the browser's session
-storage and gives the model a `search_page` tool. It looks through the whole page
-for the words the model asks for and returns the best-matching passages with where
-they start, and it reserves room in every result for the part the prompt doesn't
-hold. It runs inside the extension, so it needs no request, no embeddings and no
-Tavily key. The panel says a page is long before you ask anything, and the model is
-told how many characters it can't see and to search for a section the prompt only
-names or summarizes. A quote is checked against the whole page. An answer on a long
-page is labeled **from the page** only when a quote came from a passage
-`search_page` returned; if the model never searched, or quoted something else, the
-label is a grey **not checked**, since a quote from the part it was given can't show
-the answer wasn't about the part it wasn't. Past 1,000,000 characters, or if the
-browser has no room to keep the text, the page is handled as it used to be: the
-model only sees the start, there is no quote step, and the panel says the rest
-wasn't read. See [ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md).
+### Long pages
 
-Answers stream as they're written. Pages that can't be read (e.g. `chrome://`
-pages, the built-in PDF viewer) show a disabled "Can't read this page" state
-rather than a raw error.
+Only the first 120,000 characters of a page go into the prompt. The panel says
+a page is long before you ask anything.
 
-How this works, and why it replaced an earlier version where *Sift* rather than
-the model decided when to search, is recorded in
-[ADR 0001](docs/adr/0001-model-driven-agent-loop.md).
+- Up to 1,000,000 characters, Sift keeps the whole page in the browser's
+  session storage. The model can search it for the passages it needs. This runs
+  inside the extension, with no extra request and no Tavily key.
+- On a long page, **from the page** needs a quote from a passage that search
+  returned. Otherwise the label is **not checked**, because a quote from the
+  part the model was given can't show the answer wasn't about the part it
+  wasn't.
+- Past 1,000,000 characters, or if the browser has no room to keep the text,
+  the model sees only the start and there is no quote step. The panel says the
+  rest wasn't read.
+
+See [ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md).
+
+### Unreadable pages
+
+Pages Sift can't read, such as `chrome://` pages and the built-in PDF viewer,
+show a disabled "Can't read this page" state instead of a raw error.
+
+### How it works
+
+Earlier versions had Sift decide when to search. Now the model does. The
+reasoning is in [ADR 0001](docs/adr/0001-model-driven-agent-loop.md).
 
 ## Development
 
