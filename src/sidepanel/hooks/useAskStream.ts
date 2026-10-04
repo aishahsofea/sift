@@ -31,8 +31,7 @@ export function useAskStream() {
       port.onMessage.addListener((message: AskPortMessage) => {
         switch (message.type) {
           case 'ASK_STEP':
-            // A step means this round was a tool round, so anything streamed into
-            // the bubble before it was never part of the answer.
+            // A step means this was a tool round, so text streamed before it wasn't the answer.
             setText('')
             setStep(message.step)
             break

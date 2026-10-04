@@ -9,9 +9,7 @@ export interface ApiKeys {
   tavilyBaseUrl?: string
 }
 
-// Keys saved in Options always win and go straight to the provider. With none saved, and a
-// proxy built in, the install ID stands in for the key (the proxy adds the real one), so a
-// fresh install works with no setup (#39). Each service falls back on its own.
+// Saved keys win; with none and a proxy built in, the install ID stands in so a fresh install works (#39). Each service falls back on its own.
 export async function getApiKeys(): Promise<ApiKeys> {
   const stored = await chrome.storage.local.get([STORAGE_KEYS.nebiusApiKey, STORAGE_KEYS.tavilyApiKey])
   const nebiusApiKey = (stored[STORAGE_KEYS.nebiusApiKey] as string | undefined) || undefined

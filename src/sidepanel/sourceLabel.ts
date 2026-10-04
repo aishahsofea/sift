@@ -4,9 +4,7 @@ const LABELS: Record<AnswerSource, string> = {
   page: 'from the page',
   web: 'from the web',
   'page+web': 'from the page and the web',
-  // Says what happened, not what to think of the answer: an unchecked answer is often
-  // right, it just has no quote behind it (ADR 0005). Worded as a warning ("unverified,
-  // not traced to the page") it read as an accusation on answers that were fine.
+  // Says what happened, not a verdict: worded as a warning it read as an accusation on fine answers (ADR 0005).
   unverified: 'not checked against the page',
 }
 
@@ -15,9 +13,7 @@ interface SourceContext {
   truncated?: boolean
 }
 
-// The chip on an answer. A page label carries how many quotes were checked rather
-// than promising the answer was: one verified quote shows the page was quoted, not
-// that every claim in the answer is on it (ADR 0005), so the count is the honest part.
+// A page label shows how many quotes were checked, since one quote doesn't prove every claim is on the page (ADR 0005).
 export function describeSource(source: AnswerSource, quotes: readonly string[] = [], { truncated }: SourceContext = {}): string {
   if (source === 'unverified' && truncated) return 'not checked · page was cut short'
   const label = LABELS[source]

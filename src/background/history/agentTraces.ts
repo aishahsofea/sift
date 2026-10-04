@@ -8,8 +8,7 @@ export async function getTraces(): Promise<AgentTrace[]> {
   return (stored[TRACES_STORAGE_KEY] as AgentTrace[] | undefined) ?? []
 }
 
-// Never rejects: a trace is best-effort observability, and a quota failure here must not
-// take the answer down with it (#18). A dropped trace is logged and otherwise invisible.
+// Never rejects: a trace is best-effort, so a quota failure mustn't take the answer down (#18).
 export async function appendTrace(trace: AgentTrace): Promise<void> {
   try {
     const existing = await getTraces()

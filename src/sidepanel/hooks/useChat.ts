@@ -31,8 +31,7 @@ export function useChat(tabId: number | null) {
     }
   }, [tabId])
 
-  // `editedIndex` is the user turn being replaced: it and every turn after it go, in the
-  // panel and (via `rewind`) in the stored history, so the two stay the same.
+  // `editedIndex` is the turn being replaced: it and later turns go from the panel and, via `rewind`, from history.
   async function ask(question: string, editedIndex?: number) {
     const trimmed = question.trim()
     if (tabId === null || stream.active || !trimmed) return
@@ -43,12 +42,10 @@ export function useChat(tabId: number | null) {
     setTurns(next)
     lastQuestion.current = trimmed
 
-    // One call for every question: the model decides inside the loop whether to
-    // search, so there's no page-first pass to branch on out here.
+    // One call for every question; the model decides inside the loop whether to search.
     const result = await stream.start(tabId, trimmed, rewind || undefined)
     if (!result.ok) {
-      // A stopped answer isn't stored, so the question goes too: the panel stays
-      // the same as history, which is what a later rewind counts against.
+      // A stopped answer isn't stored, so the question goes too, keeping the panel equal to history for later rewinds.
       if ('stopped' in result) setTurns(rewound)
       else setError(result.message)
       return
@@ -76,10 +73,7 @@ export function useChat(tabId: number | null) {
     setError(null)
   }
 
-  // Nothing has streamed in yet: the panel shows a pending indicator instead of a fake
-  // bubble. Once a chunk arrives it joins turns like any other answer — the in-flight
-  // bubble carries no source label, since which one is right is only known once the
-  // loop reports the tool calls it actually made.
+  // Nothing streamed yet: show the pending indicator; the in-flight bubble has no source label until the loop reports its tool calls.
   const hasStreamedText = stream.active && stream.text.length > 0
   const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
   const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null

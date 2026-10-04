@@ -14,9 +14,7 @@ export type ParsedToolCall =
   | { ok: true; id: string; name: typeof SEARCH_PAGE; args: { query: string } }
   | { ok: false; id: string; error: string }
 
-// Validates one tool call before anything is executed. Every rejection is
-// recoverable: the caller hands the error back as the tool result and the model
-// gets another round to correct itself, rather than the loop throwing (ADR 0004).
+// Every rejection is recoverable: the error goes back as the tool result for another round (ADR 0004).
 export function parseToolCall(call: RawToolCall): ParsedToolCall {
   const problems: string[] = []
   if (!call.id) problems.push('missing id')
@@ -46,8 +44,7 @@ export function parseToolCall(call: RawToolCall): ParsedToolCall {
     return { ok: false, id: call.id, error: `Invalid tool call: ${problems.join('; ')}` }
   }
 
-  // Narrowed by the checks above: the name is a known tool and its required
-  // arguments have the types it declares.
+  // Narrowed by the checks above to a known tool with correctly typed arguments.
   if (call.name === SEARCH_SITE) {
     return { ok: true, id: call.id, name: SEARCH_SITE, args: { query: (args as { query: string }).query } }
   }

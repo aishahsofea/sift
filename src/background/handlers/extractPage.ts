@@ -5,9 +5,7 @@ import { setExtractedPage } from '../history/sessionHistory'
 const EXTRACTION_TIMEOUT_MS = 5000
 
 export async function extractPage(tabId: number): Promise<BackgroundResponse> {
-  // Registered before executeScript, not after: the injected script's synchronous
-  // top-level code (including its sendMessage call) can finish before executeScript's
-  // own promise resolves, so a listener added afterward can miss the message entirely.
+  // Registered before executeScript: the injected script can send its message before executeScript resolves.
   const pending = createContentScriptMessageWaiter(tabId)
 
   try {
@@ -38,8 +36,7 @@ export async function extractPage(tabId: number): Promise<BackgroundResponse> {
     return { type: 'EXTRACT_PAGE_RESULT', ok: false, reason: result.reason, message: result.message }
   }
 
-  // Stored first: it says whether the whole text was kept, which the log line and the
-  // panel both report. The page it returns is the head only — the whole text stays here.
+  // Stored first: it reports whether the whole text was kept; the returned page is the head only.
   const page = await setExtractedPage(tabId, result.page, result.fullContent)
   console.log(
     `[Sift] Extracted page for tab ${tabId}: "${page.title}" via ${page.extractionMethod}, ${page.content.length} chars${page.truncated ? ` (truncated, ${page.charsOmitted} more ${page.searchable ? 'kept for search_page' : 'not kept'})` : ''}${page.byline ? ', byline found' : ''}`,

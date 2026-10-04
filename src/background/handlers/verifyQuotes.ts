@@ -1,12 +1,9 @@
 import { MIN_QUOTE_CHARS } from '../../shared/constants'
 
-// How much of a rejected quote goes back to the model in the error: enough to
-// recognize which one it was, not a second copy of a long passage.
+// Enough of a rejected quote to recognise it, not a second copy of a long passage.
 const ECHOED_QUOTE_CHARS = 80
 
-// Whitespace runs become one space and the ends are trimmed, so a quote survives
-// the page's line wrapping and the model's own respacing. `\s` covers the no-break
-// and narrow no-break spaces (U+00A0, U+202F) Nemotron puts in dates like "March 3".
+// Collapses whitespace so quotes survive line wrapping; `\s` covers the U+00A0/U+202F spaces Nemotron puts in dates.
 export function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
@@ -18,10 +15,7 @@ export interface QuoteCheck {
   errors: string[]
 }
 
-// The deterministic half of quote-then-answer (ADR 0005): a quote counts only if
-// it is a substring of the page text once whitespace is collapsed on both sides.
-// Case-sensitive and verbatim on purpose — an ellipsis joining two fragments, or a
-// paraphrase in quotation marks, isn't on the page and doesn't verify.
+// A quote counts only if it is a verbatim, case-sensitive substring of the page text after collapsing (ADR 0005); ellipses and paraphrases fail.
 export function verifyQuotes(pageText: string, quotes: string[]): QuoteCheck {
   const haystack = collapseWhitespace(pageText)
   const verified: string[] = []

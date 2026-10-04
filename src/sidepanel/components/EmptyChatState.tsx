@@ -1,14 +1,11 @@
 import { useState } from 'react'
 import { pickGreeting } from '../greeting'
 
-// Module-level, not component state: this component unmounts when the first question
-// lands and remounts after Clear (#16), and the "never twice in a row" rule has to
-// survive that round trip without making the picker itself impure.
+// Module-level so "never twice in a row" survives the unmount on first question and remount after Clear (#16).
 let lastGreeting: string | undefined
 
 export function EmptyChatState({ title }: { title: string }) {
-  // Lazy initializer: picked once when the empty state appears, not re-rolled on
-  // every re-render.
+  // Lazy initializer: picked once, not re-rolled per render.
   const [greeting] = useState(() => {
     const next = pickGreeting(title, Math.random, lastGreeting)
     lastGreeting = next

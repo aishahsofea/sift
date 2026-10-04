@@ -10,8 +10,7 @@ type Extraction = { page: ExtractedPage; fullContent?: string }
 
 function extract(): Extraction | ExtractionFailure {
   try {
-    // .parse() mutates the document it's given, so hand it a clone and keep
-    // the live document untouched for the innerText fallback below.
+    // .parse() mutates its document, so pass a clone and keep the live one for the innerText fallback.
     const clone = document.cloneNode(true) as Document
 
     let title = document.title
@@ -49,9 +48,7 @@ function extract(): Extraction | ExtractionFailure {
         truncated,
         charsOmitted,
       },
-      // The prompt only holds `truncatedContent`. The whole text goes along so the
-      // model can search the rest (#11) — unless it is too big to keep, in which case
-      // the page stays what it was before: a head, and nothing to search.
+      // The whole text goes along so the model can search the rest (#11), unless it's too big to keep.
       ...(truncated && content.length <= RETAINED_PAGE_CHAR_LIMIT ? { fullContent: content } : {}),
     }
   } catch (error) {

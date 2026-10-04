@@ -24,11 +24,7 @@ export interface AgentPromptOptions {
   pageSearchEnabled: boolean
 }
 
-// The messages every round starts from. The page lives in this system message, so
-// it is re-sent unchanged on each round of the loop: identical prefix, so Nano
-// serves most of it from its prompt cache (21,120 of 23,454 tokens on a ~100K-char
-// page), and page + search results can be combined in one answer — which the old
-// two-pass fallback prompt could not do (ADR 0001).
+// The page sits in the system message so every round re-sends an identical prefix that Nano serves from its prompt cache, and page plus search results can combine (ADR 0001).
 export function assembleAgentMessages(
   page: ExtractedPage,
   history: ChatTurn[],
@@ -42,23 +38,12 @@ export function assembleAgentMessages(
   ]
 }
 
-// How the model is told to answer, which depends on the tools it has. Verified prompt
-// surface: scripts/test-nebius-tools.mjs keeps the same text and re-checks it live.
-//
-// With both tools, two explicit paths. cite_page belongs to the page path only:
-// quote-then-answer (ADR 0005) has the model commit to passages before it writes
-// claims, and the handler checks them against the page. Written as one line ("before
-// you answer from the page, call cite_page"), Nano read it as a step in every answer
-// and cited search snippets in 11 of 12 search runs, each wasting a round of the cap.
-// Two paths, with the ban stated where the search path ends, plus the notes in the
-// tool results (SEARCH_NOTE, FETCH_NOTE), took that to 0 of 47; neither alone did.
+// Verified prompt surface (scripts/test-nebius-tools.mjs keeps a copy). With both tools there are two explicit paths, with cite_page on the page path only; one line made Nano cite search snippets (ADR 0005).
 function answerInstructions(site: string, options: AgentPromptOptions): string[] {
   const { searchEnabled, citeEnabled, pageSearchEnabled } = options
   const intro = `You answer questions about the web page the user is viewing on ${site}.`
 
-  // A cut-short page whose rest can be searched (#11, ADR 0006). The same two paths as
-  // a whole page, with the page's own path gaining a step: find the passages first when
-  // they are in the part the prompt doesn't hold. How much is cut is in the notice below.
+  // Cut page whose rest is searchable (#11, ADR 0006): the page path gains a find-passages step.
   if (pageSearchEnabled) {
     const findFirst = 'If the passages you need are in the part that is cut off, call search_page to find them first.'
     if (searchEnabled) {
@@ -102,14 +87,7 @@ function answerInstructions(site: string, options: AgentPromptOptions): string[]
   ]
 }
 
-// The text of the page as the system prompt presents it: what a cite_page quote is
-// checked against (ADR 0005). Title and byline are in it because the model reads
-// them as the page and answers from them — on Distill-style pages the byline is not
-// in `content` at all (#6) — so a quote of them has to be able to verify. The URL is
-// metadata, not page text.
-//
-// `content` is the page's whole text when the prompt holds only the head of it (#11):
-// a quote is checked against the whole page, not just the part the model was given.
+// What a cite_page quote is checked against (ADR 0005): title and byline are included since the model answers from them (#6); `content` is the whole page when only the head is in the prompt (#11); the URL is metadata.
 export function pageText(page: ExtractedPage, content: string = page.content): string {
   return [page.title, page.byline, content].filter(Boolean).join('\n')
 }
@@ -124,10 +102,7 @@ function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions
     '',
     `Page title: ${page.title}`,
     `Page URL: ${page.url}`,
-    // Its own section, above the content: on Distill-style pages this text is not
-    // in page.content at all, and it is what answers "who wrote this?" (#6). The
-    // label says "on the page" so the model reads it as page content to answer
-    // from, not as outside knowledge it has been told never to use.
+    // Own section above the content, labelled "on the page" so the model answers "who wrote this?" from it (#6).
     ...(page.byline
       ? ['Page byline, shown on the page (authors, affiliations, publication details):', page.byline]
       : []),
@@ -136,16 +111,7 @@ function buildAgentSystemPrompt(page: ExtractedPage, options: AgentPromptOptions
   ].join('\n')
 }
 
-// Without this the model reads a cut page as the whole page, so "the page doesn't
-// cover it, search" has nothing to fire on — even when it can see a heading and a
-// summary for a section whose body was cut (#5, #12). It names the cut in chars, and
-// says outright that a summary is not the section: given an answer-shaped summary,
-// Nano sometimes counts the question as covered and answers without searching.
-// Constant for a given page, so it doesn't disturb the cacheable prefix.
-//
-// When the rest of the page was kept (#11) the way out is search_page, which reaches the
-// missing section itself; search_site would only find other pages of the site. Otherwise
-// it is what it was: search the site, or say the page was cut off.
+// Without this the model reads a cut page as whole and never searches, even when a summary stands in for a cut section (#5, #12). Constant per page, so the cacheable prefix is stable; with the rest kept (#11) the way out is search_page, not search_site.
 function truncationNotice(page: ExtractedPage, { searchEnabled, pageSearchEnabled }: AgentPromptOptions): string[] {
   if (!page.truncated) return []
 

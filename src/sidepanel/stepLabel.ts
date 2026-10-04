@@ -1,8 +1,6 @@
 import type { AgentStep } from '../shared/types'
 
-// What the panel shows while a tool round runs. The query is the model's own
-// wording, which is the interesting part: it's how a follow-up like "what about
-// the second one?" becomes a searchable phrase.
+// Shown while a tool round runs; the query is the model's own wording, which turns a follow-up into a searchable phrase.
 export function describeStep(step: AgentStep): string {
   switch (step.kind) {
     case 'searching':
