@@ -1,5 +1,9 @@
 # AGENTS.md
 
+@ai-standards/AGENTS.md
+
+Rules below take precedence over the shared standard above when they conflict.
+
 Guidance for AI coding agents working in this repo.
 
 ## Project
