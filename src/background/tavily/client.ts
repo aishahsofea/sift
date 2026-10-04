@@ -9,10 +9,7 @@ export interface TavilySearchResult {
   content: string
 }
 
-// The model writes the query; the domain is pinned here from the page URL and is
-// never model input (ADR 0001/0004). No page title is folded in any more: Phase 4
-// needed that to rescue a bare user question, but the model is now instructed to
-// write a self-contained query, and appending a title to it costs relevance.
+// The model writes the query; the domain is pinned from the page URL, never model input (ADR 0001, 0004).
 export async function searchTavily(apiKey: string, query: string, pageUrl: string, baseUrl = TAVILY_BASE_URL, signal?: AbortSignal): Promise<TavilySearchResult[]> {
   const res = await withRetry(`${baseUrl}/search`, {
     method: 'POST',
@@ -36,11 +33,7 @@ export async function searchTavily(apiKey: string, query: string, pageUrl: strin
   return (body.results ?? []).map((r) => ({ title: r.title, url: r.url, content: r.content }))
 }
 
-// Full text of one search result, for when its snippet wasn't enough. The caller only
-// passes URLs a search returned in this same turn (ADR 0004). Returned whole, uncut:
-// the caller (agentLoop.ts's runTool) is what decides how much of it fits in a tool
-// result and keeps the rest for search_page to reach (#7) — this function has no
-// opinion on that, the same way it has none on how the tab's own page is truncated.
+// Whole text of one result when its snippet wasn't enough; only URLs from this turn's search (ADR 0004).
 export async function extractTavily(apiKey: string, url: string, baseUrl = TAVILY_BASE_URL, signal?: AbortSignal): Promise<string> {
   const res = await withRetry(`${baseUrl}/extract`, {
     method: 'POST',
@@ -55,7 +48,6 @@ export async function extractTavily(apiKey: string, url: string, baseUrl = TAVIL
   }
 
   const body = JSON.parse(text) as { results?: { url: string; raw_content?: string }[] }
-  // A URL Tavily can't extract lands in failed_results, not results. That's a
-  // tool-level outcome the model can work around, not a request failure.
+  // A URL Tavily can't extract lands in failed_results: a tool-level outcome, not a request failure.
   return body.results?.[0]?.raw_content ?? ''
 }

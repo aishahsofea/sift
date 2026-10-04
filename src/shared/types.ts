@@ -22,21 +22,7 @@ export interface ExtractedPage {
   searchable?: boolean
 }
 
-// What ties an answer to text we supplied. A label is a claim we have to be able
-// to back, so it is derived from what happened this turn, never from the model's
-// own account of it (ADR 0001, ADR 0005).
-//   page       the model quoted the page and at least one quote was found in the
-//              page text, and no web tool returned anything. A floor, not proof
-//              that every claim in the answer is on the page. On a page that
-//              reached the model cut short, a quote also has to be one taken from
-//              a passage search_page returned (#11).
-//   web        a search or fetch returned something this turn.
-//   page+web   the page conditions above hold and a web tool returned something.
-//   unverified nothing ties the answer to supplied text: no quote was verified
-//              (the tool was skipped, or nothing it was given is on the page), or
-//              the page reached the model cut short and no quote came from a page
-//              search, so a quote from the part it held can't show the answer wasn't
-//              about the part it didn't.
+// What ties an answer to supplied text, derived from what happened, never the model's account (ADR 0001).
 export type AnswerSource = 'page' | 'web' | 'page+web' | 'unverified'
 
 export interface ChatTurn {
@@ -59,9 +45,7 @@ export interface ChatTurn {
   charsOmitted?: number
 }
 
-// What the agent loop is doing right now. Emitted per tool call, before the call
-// runs: drives the side panel and keeps the port busy so the MV3 service worker
-// doesn't go idle mid-search (ADR 0001).
+// What the loop is doing, emitted before each tool call; also keeps the port busy for the MV3 worker.
 export type AgentStep =
   | { kind: 'searching'; domain: string; query: string }
   | { kind: 'reading'; url: string }
@@ -75,17 +59,13 @@ export type UnreadableReason =
   | 'no-content'
   | 'unknown-error'
 
-// One piece of run text gated by the trace content toggle (STORAGE_KEYS.traceContentEnabled,
-// off by default): `length` is always recorded, `text` only when the toggle is on. Reused by
-// every trace field whose "off" substitute is a bare count rather than a summary (#18).
+// Text gated by the trace content toggle (off by default): `length` always recorded, `text` only when on.
 export interface TracedText {
   length: number
   text?: string
 }
 
-// A round's token usage, straight off the wire (`stream_options.include_usage`). Fields are
-// optional individually, not as a group: a round Nebius returns without usage is missing
-// every field, never zeroed, so a reader can't mistake "not reported" for "reported as zero".
+// Token usage off the wire; fields are optional so "not reported" is never mistaken for zero.
 export interface TokenUsage {
   promptTokens?: number
   completionTokens?: number
@@ -124,9 +104,7 @@ export interface AgentTraceRound {
   discardedAnswer?: TracedText
 }
 
-// Mirrors AnswerFacts in background/handlers/answerSource.ts — shared/ can't import from
-// background/, so this is a deliberate duplicate, not drift. Kept alongside `source` so the
-// trace shows why deriveSource picked that label, not only which one it picked.
+// Duplicates AnswerFacts in background/handlers/answerSource.ts since shared/ can't import background/.
 export interface AgentTraceSourceFacts {
   usedWeb: boolean
   quoteVerified: boolean
@@ -143,10 +121,7 @@ export interface AgentTracePage {
   searchable: boolean
 }
 
-// One record per START_ASK run (#18), written as the run goes so an errored or panel-closed
-// run still leaves one. `page`, `toolsOffered`, `promptHash` and `toolsHash` are absent only
-// for the two exits that happen before a page ever loads (no API key, no cached page) — every
-// other field has a meaningful value even then.
+// One record per START_ASK run (#18), written as it goes; fields are absent only on exits before page load.
 export interface AgentTrace {
   id: string
   tabId: number

@@ -11,19 +11,9 @@ interface AnswerFacts {
   quotedSearchResult: boolean
 }
 
-// Which label an answer gets, from what happened rather than from anything the
-// model said (ADR 0001). Absence of a tool call is not evidence the answer came
-// from the page (ADR 0005), so `page` needs a verified quote to stand on.
-//
-// One verified quote is a floor, not proof the whole answer is grounded (#5's answer
-// was partly grounded). The label says the page was quoted, not that every claim in
-// the answer is on it.
+// Label from what happened, not what the model said (ADR 0001); `page` needs a verified quote (ADR 0005).
 export function deriveSource({ usedWeb, quoteVerified, pageTruncated, quotedSearchResult }: AnswerFacts): AnswerSource {
-  // On a page the prompt held only the start of, a quote from that start can't show
-  // the answer wasn't about the part that was cut — #5's failure exactly. What can is
-  // the model quoting a passage its search of the whole page returned: it went and
-  // looked, and used what it found. Searching and then quoting the head anyway does not
-  // count (ADR 0006). Before #11 nothing could, and truncation capped the label outright.
+  // On a cut page only a search_page quote counts: a head quote can't show the cut was read (#5, ADR 0006).
   const pageQuoted = quoteVerified && (!pageTruncated || quotedSearchResult)
   if (usedWeb) return pageQuoted ? 'page+web' : 'web'
   return pageQuoted ? 'page' : 'unverified'

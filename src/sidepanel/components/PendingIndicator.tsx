@@ -1,5 +1,4 @@
-// A dedicated indicator, not a fake message: its text is status, not an answer, so
-// it doesn't go through ReactMarkdown and can't be mistaken for a finished bubble.
+// Not a fake message: its text is status, so it skips ReactMarkdown and can't pass for a finished bubble.
 export function PendingIndicator({ label }: { label: string }) {
   return (
     <div className="message-bubble message-bubble-pending">

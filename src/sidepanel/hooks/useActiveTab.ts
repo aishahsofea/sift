@@ -7,9 +7,7 @@ export type ActiveTabStatus =
   | { state: 'ready'; page: ExtractedPage }
   | { state: 'unreadable'; reason: UnreadableReason; message: string }
 
-// The panel is tab-scoped (#14): background/index.ts opens it with this tab's own id
-// on the path (`?tabId=`), since a side panel document has no API of its own to ask
-// which tab it's attached to — chrome.tabs.getCurrent() does not resolve here.
+// The panel is tab-scoped (#14): the tab id arrives as `?tabId=` since chrome.tabs.getCurrent() fails here.
 function ownTabId(): number | null {
   const raw = new URLSearchParams(window.location.search).get('tabId')
   const parsed = raw === null ? NaN : Number(raw)
@@ -36,9 +34,7 @@ export function useActiveTab(): { tabId: number | null; status: ActiveTabStatus 
       )
     }
 
-    // This panel belongs to one tab for its whole life, so a navigation on any other
-    // tab is none of its concern — unlike the old window-wide panel, there's no other
-    // tab to switch to.
+    // The panel belongs to one tab, so navigation elsewhere is irrelevant.
     function handleUpdated(updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) {
       if (updatedTabId === tabId && changeInfo.status === 'complete') {
         extract(updatedTabId)

@@ -1,8 +1,4 @@
-// Tool definitions sent with every non-forced round, and the text that ends the
-// loop. Both are verified prompt surface, not incidental strings: the wording was
-// exercised by scripts/test-nebius-tools.mjs against the real endpoint
-// (ADR 0001 / ADR 0003 / ADR 0005 / ADR 0006), so changing it means re-running
-// `npm run test:tools`, whose copy of these definitions has to change with them.
+// Tool definitions and loop-ending text are verified prompt surface: re-run `npm run test:tools` on change.
 
 export const SEARCH_SITE = 'search_site'
 export const FETCH_PAGE = 'fetch_page'
@@ -45,9 +41,7 @@ const SEARCH_TOOLS = [
   },
 ] as const
 
-// The page-side tool: the model quotes the page before answering from it, and the
-// handler checks each quote against the page text (ADR 0005). It needs no network,
-// so it is offered whether or not search is.
+// The model quotes the page before answering and the handler checks each quote (ADR 0005); no network.
 export const CITE_TOOL = {
   type: 'function',
   function: {
@@ -69,14 +63,7 @@ export const CITE_TOOL = {
   },
 } as const
 
-// The tool for a page too long for the prompt (#11, ADR 0006): a keyword search of the
-// whole page, run in the extension, so it needs no network and is offered whether or not
-// search is. The whole page and not only the part that was cut off, because the model
-// can't reliably find a section in a 40,000-token head either; the part that was cut off
-// still gets slots of its own in every result (searchPage), so a head that names a word
-// often cannot hide the section the tool is there to reach. Also offered, for the rest of
-// a turn, once a fetch_page result itself comes back cut (#7): the same tool, the same
-// mental model ("search the big text that got cut"), rather than a second tool name.
+// Local keyword search of the whole page (#11, ADR 0006); also offered once a fetch_page result is cut (#7).
 export const SEARCH_PAGE_TOOL = {
   type: 'function',
   function: {
@@ -96,11 +83,7 @@ export const SEARCH_PAGE_TOOL = {
   },
 } as const
 
-// cite_page as offered next to search_page. Same tool and same check, but a passage
-// search_page returned is page text and can be cited, where the whole-page description
-// says search results can't be — and it is checked against the whole page, not only the
-// part in the prompt. Kept apart from CITE_TOOL so the wording verified for whole pages
-// (ADR 0005) is not touched.
+// cite_page beside search_page: its passages are citable; kept apart from CITE_TOOL's wording (ADR 0005).
 export const CITE_TOOL_CUT = {
   ...CITE_TOOL,
   function: {
@@ -120,71 +103,37 @@ export const CITE_TOOL_CUT = {
   },
 } as const
 
-// Added to search_site and fetch_page results when cite_page is on offer. After a
-// search the model cited the snippet ("it matches the page"), which is rejected, and
-// the wasted rounds ran into the round cap. The system prompt saying so was not
-// enough; said in the result, which the model reads last, and with the two-path
-// prompt (promptAssembly.ts), cite_page calls after a search went from 11 of 12 runs
-// to 0 of 47. Neither change alone was enough (ADR 0005).
-//
-// SEARCH_NOTE also names fetch_page explicitly (#7): the system prompt already says to
-// call it when a snippet isn't enough, but on a real page the model read this note last
-// and stopped there instead — same lesson as the cite_page fix, applied one note over.
-// Measured (ADR 0009): given a search with a round left to read in, the page was read in
-// 30 of 31 runs with this wording and 21 of 26 with the earlier "Answer from them now, or
-// search again"; the runs that did not read searched again, or ran search_page on the tab page.
+// Appended to search_site and fetch_page results, which the model reads last (ADR 0005, 0009).
 export const SEARCH_NOTE =
   "These are search results, not the page content, so cite_page can't check them. If a snippet has the answer, use it now. If none does, call fetch_page with that result's URL to read it in full, or search again with a better query."
 export const FETCH_NOTE =
   "This is the full text of a fetched page, not the page content the user is viewing, so cite_page can't check it. Answer from it now."
 
-// FETCH_NOTE's cut counterpart (#7): a fetched page can itself be too long
-// (FETCHED_PAGE_CHAR_LIMIT) and come back cut, the same shape truncationNotice()
-// describes for the page the user is viewing. Shown whether or not cite_page is on
-// offer — unlike FETCH_NOTE, this isn't only about steering the model away from citing,
-// it is the only place the model learns the fetch was incomplete and search_page can
-// reach the rest.
+// FETCH_NOTE's cut counterpart (#7); shown even without cite_page, the only place the cut is announced.
 export function FETCH_NOTE_CUT(charsOmitted: number): string {
   const omitted = charsOmitted.toLocaleString('en-US')
   return `This is the fetched page, not the page content the user is viewing, so cite_page can't check it either way. It is cut off too: its last ${omitted} characters are not included. If it doesn't have the answer, call search_page with words from the missing part to reach it.`
 }
 
-// What cite_page's result says, and what it asks for when the model skipped it. All
-// prompt surface, verified live like the tool wording (ADR 0005).
-//
-// Nothing verified: the way out is to try again, so the error carries the hint. Once
-// something has verified the label has all it needs, and more calls only cost rounds
-// (on real pages the model kept citing after every quote had verified: 3 calls, 12
-// quotes), so the result says to stop.
+// cite_page result text (ADR 0005): errors carry a retry hint; once anything verifies, it says stop.
 export const CITE_RECOVERY_HINT =
   "Copy each passage exactly as it appears in the page content. If the page doesn't say it, don't cite it. Search results can't be cited."
 export const CITE_DONE_NOTE = "All of these are on the page. Answer now from them, in your own words. Don't call cite_page again."
 export const CITE_PARTIAL_NOTE = "Only the verified passages are on the page. Answer now using only those, and don't call cite_page again."
-// Sent, for that one request, when the model answered a page question without
-// calling cite_page: the answer is discarded and this asks again. It gives the model
-// the way out of saying the page doesn't cover it, so it isn't pushed into quoting
-// something that isn't there.
+// Sent for one request when a page question was answered without cite_page; leaves room to say not covered.
 export const CITE_NUDGE =
   "Before you answer, call cite_page with up to three short passages from the page content that support your answer, copied word for word. If the page content doesn't cover the question, say so instead."
-// The same ask on a page whose cut-off part search_page can reach: the passages may be
-// there, so the way out includes looking, not only saying the page doesn't cover it.
+// Same ask on a cut page, where the way out includes searching the rest.
 export const CITE_NUDGE_CUT =
   "Before you answer, call cite_page with up to three short passages from the page that support your answer, copied word for word. If the passages are in the part that is cut off, call search_page for them first. If the page doesn't cover the question, say so instead."
 
-// What search_page's result says. Like SEARCH_NOTE it is in the message the model reads
-// last, because wording elsewhere was not enough to steer what it does next (ADR 0005):
-// here, to turn what it found into a quote and then an answer, not into more searches.
-// Prompt surface, verified live with the tool wording (ADR 0006).
+// search_page result text, read last to turn findings into a quote and answer, not more searches (ADR 0005).
 export const PAGE_SEARCH_NOTE =
   'These passages are from the page, so cite_page can check them. Call cite_page with up to three short passages from them that support your answer, copied word for word, then answer. If none of them covers the question, search again with different words.'
 export const PAGE_SEARCH_EMPTY_NOTE =
   'Nothing on the page matches those words. Search again with different words, or answer from what you have.'
 
-// search_page's notes when it searched a fetched page's cut-off text instead of the page
-// the user is viewing (#7). Unlike PAGE_SEARCH_NOTE, these don't ask for a quote: a
-// fetched page is never what cite_page checks against (ADR 0005 scopes verification to
-// the page the user is viewing, and #7 doesn't extend it), so the shape here is
-// SEARCH_NOTE/FETCH_NOTE's — answer or search again — not PAGE_SEARCH_NOTE's.
+// search_page notes for a fetched page: no quote request, since cite_page never checks fetched content.
 export const PAGE_SEARCH_NOTE_FETCHED =
   "These passages are from the fetched page, not the page you're viewing, so cite_page can't check them. Answer from them now, or search again with different words."
 export const PAGE_SEARCH_EMPTY_NOTE_FETCHED =
@@ -199,8 +148,7 @@ interface ToolAvailability {
   pageSearchEnabled: boolean
 }
 
-// What a round is offered. Empty when none is available, in which case no `tools`
-// field is sent at all.
+// What a round is offered; empty means no `tools` field is sent.
 export function toolsFor({ searchEnabled, citeEnabled, pageSearchEnabled }: ToolAvailability) {
   return [
     ...(searchEnabled ? SEARCH_TOOLS : []),
@@ -211,8 +159,7 @@ export function toolsFor({ searchEnabled, citeEnabled, pageSearchEnabled }: Tool
 
 export type ArgKind = 'string' | 'string[]'
 
-// Required arguments per tool with the type each must have, keyed by name — the
-// validator's allowlist of tool names doubles as this map (an unknown name has no entry).
+// Required arguments and their types per tool; doubles as the allowlist of tool names.
 export const REQUIRED_TOOL_ARGS: Record<string, Record<string, ArgKind>> = {
   [SEARCH_SITE]: { query: 'string' },
   [FETCH_PAGE]: { url: 'string' },
@@ -220,28 +167,18 @@ export const REQUIRED_TOOL_ARGS: Record<string, Record<string, ArgKind>> = {
   [SEARCH_PAGE]: { query: 'string' },
 }
 
-// Appended as a one-off user message on the forced final call, with `tools`
-// omitted. Neither omitting the tools nor tool_choice: "none" is enough on its
-// own — both make the model emit raw tool-call markup as its answer instead
-// (0/5 clean answers each; with this nudge, 5/5). See ADR 0003.
+// One-off user message on the forced final call, with `tools` omitted; neither alone stops markup (ADR 0003).
 export const FORCE_NUDGE =
   "You've used all your searches. Answer now from the page and the results above. If they don't cover the question, say you couldn't find it."
 
-// On a whole page the model has been told to quote before it answers, so with the tools
-// off it reached for cite_page anyway (real pages, follow-up questions: 2 of 5 runs
-// ended in an error). The nudge above only says "searches", which leaves that
-// instruction standing, so this one names cite_page and says no tool at all.
+// Names cite_page too: with tools off, the model still reached for it after the plain nudge.
 export const FORCE_NUDGE_CITE =
   "You've used all your tool calls, and cite_page is no longer available. Answer now, in plain text, from the page and the results above. If they don't cover the question, say you couldn't find it."
 
-// Added, for that request only, when the forced round still comes back as a tool call:
-// one more try before it becomes an error.
+// One more try, for that request only, when the forced round still returns a tool call.
 export const FORCE_RETRY = 'Do not call any tool. Write your answer as plain text now.'
 
-// Tool-call syntax that should have been parsed into message.tool_calls. Reaching
-// `content` means no tool parser was active, and rendering it would show markup
-// as the answer (ADR 0003) — so a final answer carrying this is a failure,
-// whichever round produced it.
+// Tool-call syntax in `content` means no tool parser ran (ADR 0003); a final answer with it is a failure.
 const TOOL_MARKUP = /<\/?tool_?call>|<TOOLCALL>|<function[=\s>]/i
 
 export function containsToolMarkup(text: string): boolean {

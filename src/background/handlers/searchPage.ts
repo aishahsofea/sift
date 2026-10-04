@@ -6,28 +6,19 @@ export interface PagePassage {
   text: string
 }
 
-// A page is scanned in windows PAGE_SEARCH_PASSAGE_CHARS wide that start half a window
-// apart, so every character is in two of them and a sentence on a window's edge is
-// whole in its neighbour. Windows rather than paragraphs because the extracted text
-// has no dependable paragraph breaks: Readability's textContent runs blocks together
-// whenever the source markup has no whitespace between them.
+// Half-window stride so a sentence on a window's edge is whole in its neighbour; Readability merges blocks.
 const STRIDE = PAGE_SEARCH_PASSAGE_CHARS / 2
 
-// BM25's term-frequency saturation. Its length normalisation is left out on purpose:
-// every window is the same width, so there is nothing to normalise.
+// BM25 term-frequency saturation; length normalisation is omitted because every window is the same width.
 const K1 = 1.2
 
-// A passage is moved at most this far to start or end between words. A stretch with no
-// whitespace in it (a long URL, a script written without spaces) is cut where it falls.
+// A window edge moves at most this far to land between words; whitespace-free stretches cut where they fall.
 const SNAP_CHARS = 60
 
-// Letters and digits in any script, so "Life-of-a-Jailbreak" is three words and "12" is one.
-// A script written without spaces comes out as one long word and matches only whole.
+// Letters and digits in any script; a script without spaces becomes one long word and matches whole.
 const WORD = /[\p{L}\p{N}]+/gu
 
-// Just enough stemming that "jailbreaks" finds "jailbreak" and "attacked" finds
-// "attack": drop a plural s, then keep six letters. It merges some unrelated words
-// ("transformer", "transfer"), which costs a stray passage; a miss costs a round.
+// Minimal stemming ("jailbreaks" finds "jailbreak"): drop a plural s, keep six letters.
 const STEM_CHARS = 6
 
 function stem(word: string): string {
@@ -36,27 +27,13 @@ function stem(word: string): string {
   return singular.slice(0, STEM_CHARS)
 }
 
-// For a fetched page the head is already in the prompt, so `pastCutOnly` ranks only the
-// windows past `cutAt` and `maxPassages` sets how many to return (#27).
+// For a fetched page the head is already in the prompt, so `pastCutOnly` ranks only windows past `cutAt`.
 export interface SearchPageOptions {
   pastCutOnly?: boolean
   maxPassages?: number
 }
 
-// The local half of search_page (#11, ADR 0006): BM25 over the page text, no model, no
-// network. Returns up to PAGE_SEARCH_MAX_PASSAGES passages, best first, none of them
-// overlapping, each with the character offset it starts at.
-//
-// It searches the whole page, not only the part the prompt lacks. The model cannot
-// reliably find a section in a 40,000-token head (the passage it wants can be sitting in
-// the prompt, unfound), and "the page has nothing on this" only means something if the
-// whole page was looked through. But the part past `cutAt` is what the tool is for, so it
-// is guaranteed PAGE_SEARCH_CUT_PASSAGES slots before rank fills the rest: a head that
-// names the word in its table of contents and abstract must not push out the section
-// body it summarizes (#5).
-//
-// For a fetched page the head is already in the prompt, so `pastCutOnly` ranks only the
-// windows past `cutAt` and `maxPassages` sets how many to return (#27).
+// Local BM25 half of search_page (#11, ADR 0006); PAGE_SEARCH_CUT_PASSAGES slots go past `cutAt` (#5).
 export function searchPage(
   text: string,
   query: string,
@@ -66,9 +43,7 @@ export function searchPage(
   const terms = new Set(Array.from(query.matchAll(WORD), (match) => stem(match[0])))
   if (!terms.size) return []
 
-  // How many times each term occurs in each window, by window number. A window w spans
-  // [w * STRIDE, (w + 2) * STRIDE), so a word is in the window its position falls in and
-  // the one before it.
+  // Term counts per window number; window w spans [w * STRIDE, (w + 2) * STRIDE).
   const counts = new Map<string, Map<number, number>>()
   for (const match of text.matchAll(WORD)) {
     const term = stem(match[0])
@@ -76,8 +51,7 @@ export function searchPage(
     const inWindows = counts.get(term) ?? new Map<number, number>()
     const slot = Math.floor(match.index / STRIDE)
     for (const window of [slot - 1, slot]) {
-      // Only in a window that holds all of the word: one across the window's end would
-      // count there and then be cut from the passage shown, which would not have it.
+      // Only count words wholly inside the window; a word across its end is cut from the shown passage.
       if (window >= 0 && match.index + match[0].length <= (window + 2) * STRIDE) {
         inWindows.set(window, (inWindows.get(window) ?? 0) + 1)
       }
@@ -104,7 +78,7 @@ export function searchPage(
   const take = (windows: number[], upTo: number) => {
     for (const window of windows) {
       if (chosen.length >= upTo) return
-      // Windows a step apart overlap by half, so a window next to a chosen one is a second view of the same text.
+      // Windows a step apart overlap by half, so a neighbour of a chosen window repeats the same text.
       if (chosen.some((taken) => Math.abs(taken - window) < 2)) continue
       chosen.push(window)
     }
@@ -115,10 +89,7 @@ export function searchPage(
   return chosen.sort(byScore).map((window) => passage(text, window * STRIDE, (window + 2) * STRIDE))
 }
 
-// The window's text, moved in to whole words and trimmed. The offset is taken after
-// both, so `text.slice(offset, offset + passage.length)` is always the passage. Words
-// here are the ones the search counts, so what is cut off is only a word the window
-// itself cut in two, which was not counted in it (see the loop above).
+// Trimmed to whole words before the offset is taken, so `text.slice(offset, offset + length)` is the passage.
 function passage(text: string, windowStart: number, windowEnd: number): PagePassage {
   let start = windowStart
   let end = Math.min(windowEnd, text.length)

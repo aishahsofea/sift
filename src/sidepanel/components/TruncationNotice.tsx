@@ -1,8 +1,6 @@
 import { describeTruncatedPage } from '../truncationLabel'
 
-// Shown as soon as a truncated page is read, before the first question: the user
-// should know Sift is holding a fragment before they rely on an answer (#12), and
-// whether it can reach the rest (#11).
+// Shown before the first question so the user knows the page is a fragment (#12) and what's reachable.
 export function TruncationNotice({ charsOmitted, searchable }: { charsOmitted: number; searchable: boolean }) {
   return (
     <div role="status" aria-live="polite" className="truncation-notice">

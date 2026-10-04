@@ -14,8 +14,7 @@ function quoteBlock(text: string): string {
     .join('\n')
 }
 
-// Built from ChatTurn[], not from assistant-ui's messages, so each answer keeps the
-// source label and checked quotes (#45).
+// Built from ChatTurn[], not assistant-ui messages, so answers keep their source label and quotes (#45).
 export function buildConversationMarkdown(page: PageInfo, turns: readonly ChatTurn[]): string {
   const parts = [`# ${page.title || page.url}`, page.url]
 

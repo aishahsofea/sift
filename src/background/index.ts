@@ -6,17 +6,7 @@ import { getApiKeys } from './keys'
 
 const SIDE_PANEL_PATH = 'src/sidepanel/index.html'
 
-// Tab-scoped, not window-wide (#14). A `side_panel.default_path` in the manifest makes
-// every tab share one global panel even once a tab-specific one is also configured for
-// it (confirmed against GoogleChrome/chrome-extensions-samples#987), so the manifest
-// declares no default_path (see manifest.config.ts) and the panel is opened by hand
-// here instead of via setPanelBehavior. setOptions is deliberately not awaited:
-// sidePanel.open() only counts as a response to the click if it runs synchronously in
-// this listener, and setOptions-then-open — not the reverse — is the order that same
-// thread found actually scopes the panel to one tab. Each tab's own id rides on the
-// path since a side panel document has no API to ask which tab it belongs to
-// (chrome.tabs.getCurrent() doesn't resolve here); useActiveTab reads it back out of
-// location.search.
+// Tab-scoped (#14): the panel opens here with `?tabId=`; setOptions isn't awaited so open() stays sync.
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id === undefined) return
   const tabId = tab.id
@@ -28,8 +18,7 @@ chrome.action.onClicked.addListener((tab) => {
     .catch((error) => console.error(`[Sift] Failed to open side panel for tab ${tabId}:`, error))
 })
 
-// A closed tab's page, whole text and history go with it. Registered at the top level,
-// like the listeners below. Needs no `tabs` permission: it reads only the id.
+// A closed tab's page, whole text and history go with it; reads only the id, so no `tabs` permission.
 chrome.tabs.onRemoved.addListener((tabId) => {
   clearTabData(tabId).catch((error) => console.error(`[Sift] couldn't clear tab ${tabId}:`, error))
 })
@@ -43,8 +32,7 @@ chrome.runtime.onConnect.addListener((port) => {
   })
 })
 
-// Registered at the top level (not inside an async function) so a revived
-// service worker re-attaches this listener before Chrome dispatches a queued event.
+// Top level, so a revived service worker re-attaches before Chrome dispatches a queued event.
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
   switch (message.type) {
     case 'EXTRACT_PAGE':

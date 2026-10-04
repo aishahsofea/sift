@@ -23,10 +23,7 @@ import {
   SEARCH_PAGE_TOOL,
 } from './tools'
 
-// scripts/test-nebius-tools.mjs is standalone, so it keeps its own copy of the
-// prompt and tool wording, and it is the only thing that checks that wording against
-// the real model (ADR 0001, ADR 0003, ADR 0005, ADR 0006). A prompt edit that never reaches it
-// is verified prompt surface that is no longer verified. This fails when the two drift.
+// The standalone script keeps its own copy of the prompt and tool wording; this fails when they drift.
 const script = readFileSync(new URL('../../../scripts/test-nebius-tools.mjs', import.meta.url), 'utf8')
 
 const page: ExtractedPage = {
@@ -41,24 +38,21 @@ const truncatedPage: ExtractedPage = { ...page, truncated: true, charsOmitted: 1
 
 type SpikePage = Pick<ExtractedPage, 'url' | 'title' | 'content'> & { truncated?: boolean; charsOmitted?: number }
 
-// The script's own function, lifted out of its source so what runs here is what
-// the live spike sends.
+// The script's own function lifted from its source, so this runs what the spike sends.
 function spikeSystemPrompt(): (page: SpikePage, options: { search: boolean; cite: boolean; pageSearch?: boolean }) => string {
   const source = script.match(/function systemPrompt\([^)]*\) \{[\s\S]*?\n\}\n/)?.[0]
   if (!source) throw new Error('systemPrompt() not found in scripts/test-nebius-tools.mjs')
   return (0, eval)(`(${source})`)
 }
 
-// The script's FETCH_NOTE_CUT, lifted out the same way: a function, not a plain string,
-// so it is compared by calling both sides with the same input rather than by substring.
+// FETCH_NOTE_CUT lifted the same way; a function, so both sides are called with the same input.
 function spikeFetchNoteCut(): (charsOmitted: number) => string {
   const source = script.match(/function FETCH_NOTE_CUT\([^)]*\) \{[\s\S]*?\n\}\n/)?.[0]
   if (!source) throw new Error('FETCH_NOTE_CUT not found in scripts/test-nebius-tools.mjs')
   return (0, eval)(`(${source})`)
 }
 
-// The script's tool definitions, evaluated the same way, in one scope since the cut
-// variant of cite_page is built by spreading the whole-page one.
+// Tool definitions evaluated in one scope, since the cut cite_page spreads the whole-page one.
 function spikeTools(): { SEARCH_PAGE_TOOL: unknown; CITE_TOOL: unknown; CITE_TOOL_CUT: unknown } {
   const declaration = (name: string) => {
     const source = script.match(new RegExp(`const ${name} = [\\s\\S]*?\\n\\};\\n`))?.[0]

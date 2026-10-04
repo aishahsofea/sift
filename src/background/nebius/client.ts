@@ -10,8 +10,7 @@ export interface AgentTurn {
   content: string
   /** Unvalidated: names and arguments are whatever the model sent. */
   toolCalls: RawToolCall[]
-  // The five fields below are all optional, including `model`, so the existing scripted
-  // `{content, toolCalls}` turns in agentLoop.test.ts keep typechecking unchanged (#18).
+  // All five fields are optional so scripted `{content, toolCalls}` turns in tests typecheck (#18).
   /** resolveNemotronModel's pick for this round. */
   model?: string
   /** Absent when Nebius doesn't report usage for this round — never zeroed. */
@@ -33,23 +32,17 @@ interface StreamAgentTurnOptions {
   onContent: (delta: string) => void
 }
 
-// One round of the loop. Streamed whether or not it turns out to be the answer:
-// which it is only becomes clear when tool calls do (or don't) arrive, and the
-// answer round is the one that must stream.
+// Streamed even if it isn't the answer, which is only known once tool calls do or don't arrive.
 export async function streamAgentTurn(
   apiKey: string,
   messages: ChatMessage[],
   { tools, baseUrl = NEBIUS_BASE_URL, signal, onContent }: StreamAgentTurnOptions,
 ): Promise<AgentTurn> {
-  // Marks this round's start for `timing` below — before model resolution and the POST,
-  // both of which are real, attributable latency on a cold service worker.
+  // Start of this round's timing, before model resolution and the POST (real latency on a cold worker).
   const startedAt = Date.now()
   const model = await resolveNemotronModel(apiKey, baseUrl)
 
-  // Aborts on silence, not on total duration (#28): a stall during connect or between
-  // chunks means Nebius has stopped sending bytes, and nothing else here would ever
-  // notice. Re-armed below on every sign of life; a real answer can stream past the
-  // timeout as long as it keeps sending.
+  // Aborts on silence, not total duration (#28); re-armed on every sign of life so long answers can stream.
   const controller = new AbortController()
   signal?.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
   if (signal?.aborted) controller.abort(signal.reason)
@@ -88,14 +81,11 @@ export async function streamAgentTurn(
 
     let firstByteAt: number | undefined
     let content = ''
-    // Nemotron streams chain-of-thought under `reasoning`; other OpenAI-compatible
-    // wrappers use `reasoning_content` (AGENTS.md: check both). Buffered for the trace
-    // only — never passed to onContent, so it never reaches the panel or history.
+    // Nemotron uses `reasoning`, other wrappers `reasoning_content` (AGENTS.md); trace only, never shown.
     let reasoning = ''
     let usage: TokenUsage | undefined
     let finishReason: string | undefined
-    // Tool calls stream as fragments keyed by index: id and name arrive first, then
-    // the arguments JSON in pieces that only parse once joined (3 fragments on Nano).
+    // Tool calls stream as fragments by index; the args JSON only parses once joined.
     const calls: { id: string; name: string; argsText: string }[] = []
 
     const handleLine = (line: string): void => {
@@ -129,8 +119,7 @@ export async function streamAgentTurn(
       }
       if (chunk.error) throw new Error(`Nebius stream error: ${JSON.stringify(chunk.error)}`)
 
-      // stream_options.include_usage's terminal chunk carries usage with choices: [] — read
-      // it here, ahead of the `!delta` guard below, or it's never seen.
+      // The terminal usage chunk has `choices: []`, so read it before the `!delta` guard.
       if (chunk.usage) {
         usage = {
           promptTokens: chunk.usage.prompt_tokens,
@@ -150,9 +139,7 @@ export async function streamAgentTurn(
       if (reasoningDelta) reasoning += reasoningDelta
 
       if (delta.content) {
-        // A tool round still emits one whitespace-only content delta, and a real
-        // answer starts with "\n". Swallowing leading whitespace here keeps both out
-        // of the panel and out of stored history, rather than trimming downstream.
+        // A tool round still emits a whitespace-only delta, and a real answer starts with "\n"; drop it here.
         const emit = content === '' ? delta.content.replace(/^\s+/, '') : delta.content
         if (emit) {
           content += emit
@@ -170,9 +157,7 @@ export async function streamAgentTurn(
       }
     }
 
-    // A single JSON `data:` payload can be split across two reader.read() calls, so
-    // the trailing incomplete line is buffered across reads rather than assumed to
-    // be whole (verified live against the real endpoint).
+    // A `data:` payload can split across reads, so buffer the trailing incomplete line.
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''

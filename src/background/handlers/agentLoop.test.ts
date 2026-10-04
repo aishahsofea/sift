@@ -25,9 +25,7 @@ import {
 import { extractTavily, searchTavily } from '../tavily/client'
 import { runAgentLoop } from './agentLoop'
 
-// The loop is driven through runAgentLoop with only its boundaries faked: the
-// model, Tavily, chrome.storage and the port. Everything between — tool parsing,
-// quote verification, label derivation — is the real code.
+// Driven through runAgentLoop with only the model, Tavily, chrome.storage and the port faked.
 vi.mock('../history/sessionHistory', () => ({
   getExtractedPage: vi.fn(),
   getFullPageContent: vi.fn(),
@@ -50,12 +48,10 @@ const wholePage: ExtractedPage = {
   charsOmitted: 0,
 }
 
-// Cut short, and the rest of it not kept: how every long page was handled before #11, and
-// still is when the whole text is too big to keep or storing it failed.
+// Cut short with the rest not kept: pages handled as before #11, or when the whole is too big.
 const truncatedPage: ExtractedPage = { ...wholePage, truncated: true, charsOmitted: 126_323 }
 
-// Cut short with the rest kept (#11): `wholePage.content` is all the prompt holds, and the
-// section that answers the question is past it.
+// Cut short with the rest kept (#11): the answering section is past `wholePage.content`.
 const TAIL_QUOTE = 'The jailbreak works by starting the dangerous answer before the model can refuse it'
 const tail = `\n\nLife of a Jailbreak\n\n${TAIL_QUOTE}, after which the model keeps going.`
 const fullContent = wholePage.content + tail
@@ -71,8 +67,7 @@ const search = (query: string) => toolRound('search_site', { query })
 const scan = (query: string) => toolRound('search_page', { query })
 const answer = (content: string): AgentTurn => ({ content, toolCalls: [] })
 
-// What each model call was sent, snapshotted when it was made: the loop keeps
-// appending to the same messages array afterwards.
+// Snapshotted per model call, since the loop keeps appending to the same messages array.
 let modelCalls: { messages: ChatMessage[]; tools: unknown }[]
 
 function scriptModel(...rounds: AgentTurn[]): void {
@@ -256,10 +251,7 @@ describe('quote-then-answer (ADR 0005)', () => {
   })
 })
 
-// A model that answers a page question without calling cite_page leaves nothing
-// to verify. Quoting *after* such an answer would let it cite passages that merely
-// relate to something it made up (#5's failure, relabelled `page`), so the answer is
-// discarded and the model is asked to quote first (ADR 0005).
+// A tool-less page answer has nothing to verify (#5): discard it and ask the model to quote first (ADR 0005).
 describe('an answer with no cite_page call on a whole page', () => {
   const chunks = (posted: AskPortMessage[]) =>
     posted.filter((m): m is Extract<AskPortMessage, { type: 'ASK_CHUNK' }> => m.type === 'ASK_CHUNK').map((m) => m.delta)
@@ -371,9 +363,7 @@ describe('an answer with no cite_page call on a whole page', () => {
   })
 })
 
-// The last round has no tools, and on real pages the model still reached for cite_page in
-// it: the prompt says to quote before answering, and the old nudge only mentioned searches.
-// It comes back as a tool call, which used to be an error shown to the user.
+// The model reached for cite_page in the tool-less last round, which used to be a user-facing error.
 describe('the forced final round', () => {
   const spent = () => Array.from({ length: MAX_TOOL_ROUNDS }, (_, i) => search(`query ${i}`))
 
@@ -467,8 +457,7 @@ describe('with a web result', () => {
       content: 'Pro: $17.50 per user per month.',
       note: FETCH_NOTE,
     })
-    // Short enough to reach in one round: nothing was cut, so there is nothing for
-    // search_page to reach and it stays off the table (#7).
+    // Nothing was cut, so search_page stays off the table (#7).
     expect(toolNames(modelCalls[2].tools)).not.toContain('search_page')
   })
 
@@ -490,14 +479,10 @@ describe('with a web result', () => {
   })
 })
 
-// A fetch_page result can itself be too long and come back cut (#7): fetch_page isn't
-// the only tool whose result can outgrow the prompt. search_page reaches the rest of
-// it the same way it already reaches the part of the tab page that was cut off, and
-// takes priority over the tab page when both are cut in the same turn.
+// A fetch_page result can come back cut (#7); search_page reaches its rest and beats a cut tab page.
 describe('a fetched page that comes back cut (#7)', () => {
   const results = [{ title: 'Board pruning', url: 'https://loomkit.example/help/board-pruning', content: 'An overview of board pruning.' }]
-  // Longer than FETCHED_PAGE_CHAR_LIMIT regardless of its exact value, with the fact
-  // that answers the question past where the cut falls.
+  // Longer than FETCHED_PAGE_CHAR_LIMIT, with the answer past the cut.
   const FETCH_TAIL_QUOTE = 'the cumulative influence score falls below a threshold of 0.42'
   const fetchedFullContent = 'lorem ipsum dolor sit amet '.repeat(Math.ceil(FETCHED_PAGE_CHAR_LIMIT / 27) + 50) + FETCH_TAIL_QUOTE
   const charsOmitted = fetchedFullContent.length - FETCHED_PAGE_CHAR_LIMIT
@@ -652,9 +637,7 @@ describe('which tools a round is offered', () => {
   })
 })
 
-// Amber `unverified` looks the same in the panel whether the model skipped cite_page,
-// cited and had every quote rejected, or was never offered the tool. The log is how
-// to tell them apart on a real page.
+// `unverified` looks the same whether cite_page was skipped, rejected or not offered; the log differs.
 describe('the log line', () => {
   it('says a quoted answer was quoted', async () => {
     scriptModel(cite(QUOTE), answer('1,200.'))
@@ -713,9 +696,7 @@ describe('the log line', () => {
   })
 })
 
-// A page longer than the prompt holds, with the rest of it kept (#11, ADR 0006). The
-// model gets the head and search_page; a quote is checked against all of it. The cut is
-// what #5 was about: the section that answers the question is past it.
+// The head plus search_page, quotes checked against the whole page; the answer is past the cut (#5).
 describe('a cut-short page whose rest was kept', () => {
   const chunks = (posted: AskPortMessage[]) =>
     posted.filter((m): m is Extract<AskPortMessage, { type: 'ASK_CHUNK' }> => m.type === 'ASK_CHUNK').map((m) => m.delta)
@@ -856,8 +837,7 @@ describe('a cut-short page whose rest was kept', () => {
       await ask()
 
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page', 'cite_page'])
-      // Distinct from the fetch-escalation clause (#7), which mentions search_page even
-      // here: this checks the tab-page-specific instruction is what's actually absent.
+      // Distinct from the fetch-escalation clause (#7), which also mentions search_page: no tab-page text.
       expect(modelCalls[0].messages[0].content).not.toContain('call search_page to find them first')
     })
 
@@ -1094,8 +1074,7 @@ describe('a cut-short page whose rest was kept', () => {
       const { turn } = await ask()
 
       expect(toolNames(modelCalls[0].tools)).toEqual(['search_site', 'fetch_page'])
-      // Distinct from the fetch-escalation clause (#7), which mentions search_page even
-      // here: this checks the tab-page-specific instruction is what's actually absent.
+      // Distinct from the fetch-escalation clause (#7), which also mentions search_page: no tab-page text.
       expect(modelCalls[0].messages[0].content).not.toContain('call search_page to find them first')
       expect(modelCalls[0].messages[0].content).not.toContain('cite_page')
       expect(turn).toMatchObject({ source: 'unverified', truncated: true })

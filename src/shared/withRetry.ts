@@ -1,7 +1,4 @@
-// Wraps a single fetch call: one retry on network failure or a 5xx response,
-// never on 4xx — a 4xx from either API in this app means a bad or missing
-// key, so it surfaces immediately rather than being retried into a slower
-// failure.
+// One retry on network failure or 5xx, never 4xx: a 4xx means a bad or missing key and should surface.
 export async function withRetry(url: string, init: RequestInit): Promise<Response> {
   return attempt(url, init, false)
 }
@@ -11,8 +8,7 @@ async function attempt(url: string, init: RequestInit, isRetry: boolean): Promis
   try {
     res = await fetch(url, init)
   } catch (error) {
-    // A caller's own cancellation is not a transient failure — retrying it would
-    // silently double however long the caller was already waiting to give up.
+    // A caller's own cancellation isn't transient; retrying would double the wait.
     if (init.signal?.aborted) throw error
     if (isRetry) throw error
     return attempt(url, init, true)

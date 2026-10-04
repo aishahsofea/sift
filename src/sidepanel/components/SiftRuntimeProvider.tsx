@@ -2,8 +2,7 @@ import type { ReactNode } from 'react'
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from '@assistant-ui/react'
 import type { ChatTurn } from '../../shared/types'
 
-// useChat stays the source of truth (history, the background port); assistant-ui only
-// renders. Sift's own fields ride along in metadata.custom so the grounding label survives.
+// useChat stays the source of truth; assistant-ui only renders, with Sift's fields in metadata.custom.
 function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
   return {
     id: `turn-${idx}`,

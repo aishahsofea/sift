@@ -13,10 +13,7 @@ import type {
 import { CITE_PAGE, FETCH_PAGE, SEARCH_PAGE, SEARCH_SITE } from '../nebius/tools'
 import { collapseWhitespace } from './verifyQuotes'
 
-// The verifyQuotes.ts-style module for the agent trace (#18): fully unit-tested, no
-// chrome.* anywhere in this file. agentLoop.ts is the only caller that persists what
-// this builds (via appendTrace) — everything here is pure and side-effect-free, so the
-// redaction and summary logic can be proven correct before the loop ever calls it.
+// Pure like verifyQuotes.ts, no chrome.*; agentLoop.ts is the only caller that persists the result (#18).
 
 export interface CreateTraceRecorderInput {
   tabId: number
@@ -24,10 +21,7 @@ export interface CreateTraceRecorderInput {
   contentEnabled: boolean
 }
 
-// Mutable scratch state for one run. `page`/`toolsOffered`/`promptHash`/`toolsHash` and
-// the three flags are set directly by agentLoop.ts as the run progresses — the same
-// fields land unchanged on the AgentTrace finalizeTrace produces, so there is exactly
-// one place each is computed.
+// Scratch state for one run; the loop sets flags and hashes directly and they land unchanged on the trace.
 export interface TraceRecorder {
   id: string
   tabId: number
@@ -70,8 +64,7 @@ export interface RoundInput {
   toolCalls: AgentTraceToolCall[]
 }
 
-// Applies the content toggle to reasoning/discardedAnswer at insertion time — the one
-// place that redaction can be gotten wrong, not one per caller.
+// Applies the content toggle at insertion, the one place redaction can go wrong.
 export function recordRound(recorder: TraceRecorder, round: RoundInput): void {
   recorder.rounds.push({
     index: round.index,
@@ -86,10 +79,7 @@ export function recordRound(recorder: TraceRecorder, round: RoundInput): void {
   })
 }
 
-// One tool call, from its raw name and arguments plus whatever runTool returned for it.
-// `summary` is always present, even with the content toggle off: it is a human sentence
-// built from counts, never the raw question/answer/quote/tool-result/reasoning text the
-// toggle gates (`args`/`result` below).
+// `summary` is always present, even with the toggle off: it is built from counts, never raw text.
 export function summarizeToolCall(name: string, args: unknown, result: unknown, contentEnabled: boolean): AgentTraceToolCall {
   return {
     name,
@@ -107,9 +97,7 @@ export interface FinalizeOutcome {
   sourceFacts?: AgentTraceSourceFacts
 }
 
-// Pure: takes the recorder's accumulated state plus what only the loop's own exit point
-// knows (status, the extension version chrome.runtime.getManifest() reports, the final
-// answer) and produces the record appendTrace persists.
+// Pure: builds the record appendTrace persists from the recorder plus what only the loop's exit knows.
 export function finalizeTrace(recorder: TraceRecorder, outcome: FinalizeOutcome): AgentTrace {
   return {
     id: recorder.id,
@@ -133,12 +121,7 @@ export function finalizeTrace(recorder: TraceRecorder, outcome: FinalizeOutcome)
   }
 }
 
-// Diffing fingerprint for the two things a round's prompt is built from, so two runs can
-// be compared without storing the prompt itself. `pageContent` is spliced out of
-// `systemPrompt` first: buildAgentSystemPrompt interpolates the hostname and
-// charsOmitted into its own sentences, so only `page.content` is a clean, separable
-// substring (promptAssembly.ts) — the hash still shifts with those, which is accepted,
-// since this is a diffing fingerprint, not a wording-only checksum.
+// Diffing fingerprint that avoids storing the prompt; `pageContent` is spliced out of the hashed text.
 export function fingerprintPrompt(systemPrompt: string, pageContent: string, tools: unknown): { promptHash: string; toolsHash: string } {
   const fixedPrompt = pageContent ? systemPrompt.split(pageContent).join('') : systemPrompt
   return {
@@ -151,9 +134,7 @@ function toTracedText(text: string, contentEnabled: boolean): TracedText {
   return { length: text.length, ...(contentEnabled ? { text } : {}) }
 }
 
-// A sync, 32-bit FNV-1a hash. Good enough for a diffing fingerprint, not a security
-// control, so there's no reason to thread the async crypto.subtle API through this
-// otherwise fully synchronous module.
+// Sync 32-bit FNV-1a: a diffing fingerprint, not a security control, so no async crypto.subtle.
 function fnv1a(input: string): string {
   let hash = 0x811c9dc5
   for (let i = 0; i < input.length; i++) {
@@ -167,11 +148,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-// A tool call "succeeded" if runTool's result carries no `error`, or — cite_page's
-// partial-success shape — it carries one alongside at least one verified quote. Every
-// other error shape (an unknown/malformed call, a missing key, an unavailable tool, a
-// fetch that failed) is a bare `{error}` with nothing else, so this one rule covers
-// every tool without a per-name special case.
+// Succeeded if no `error`, or cite_page's partial success (an error with a verified quote).
 function toolCallSucceeded(result: unknown): boolean {
   if (!isRecord(result) || !('error' in result)) return true
   return Array.isArray(result.verified) && result.verified.length > 0
@@ -187,10 +164,7 @@ function summarize(name: string, args: unknown, result: unknown): string {
   return error ? `error: ${error}` : `${name} called`
 }
 
-// Reclassifies cite_page's rejected quotes independently, via the same MIN_QUOTE_CHARS
-// threshold and collapseWhitespace verifyQuotes.ts itself uses, rather than reusing its
-// error string: that string is clipped to 80 chars at the source for the model's context
-// budget, and recording it verbatim here would silently inherit that clip (#18).
+// Reclassifies rejected quotes with verifyQuotes' own threshold, since its error string is clipped (#18).
 function summarizeCitePage(args: unknown, result: unknown): string {
   const quotes = isRecord(args) && Array.isArray(args.quotes) ? (args.quotes as string[]) : undefined
   const verified = isRecord(result) && Array.isArray(result.verified) ? (result.verified as string[]) : undefined
