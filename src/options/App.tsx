@@ -9,6 +9,7 @@ export default function App() {
   const [nebiusApiKey, setNebiusApiKey] = useState('')
   const [tavilyApiKey, setTavilyApiKey] = useState('')
   const [traceContentEnabled, setTraceContentEnabled] = useState(false)
+  const [deepModelEnabled, setDeepModelEnabled] = useState(false)
   const [saved, setSaved] = useState(false)
   const [traces, setTraces] = useState<AgentTrace[]>([])
 
@@ -20,11 +21,12 @@ export default function App() {
 
   useEffect(() => {
     chrome.storage.local
-      .get([STORAGE_KEYS.nebiusApiKey, STORAGE_KEYS.tavilyApiKey, STORAGE_KEYS.traceContentEnabled])
+      .get([STORAGE_KEYS.nebiusApiKey, STORAGE_KEYS.tavilyApiKey, STORAGE_KEYS.traceContentEnabled, STORAGE_KEYS.deepModelEnabled])
       .then((stored) => {
         setNebiusApiKey((stored[STORAGE_KEYS.nebiusApiKey] as string) ?? '')
         setTavilyApiKey((stored[STORAGE_KEYS.tavilyApiKey] as string) ?? '')
         setTraceContentEnabled((stored[STORAGE_KEYS.traceContentEnabled] as boolean) ?? false)
+        setDeepModelEnabled((stored[STORAGE_KEYS.deepModelEnabled] as boolean) ?? false)
       })
   }, [])
 
@@ -33,6 +35,7 @@ export default function App() {
       [STORAGE_KEYS.nebiusApiKey]: nebiusApiKey,
       [STORAGE_KEYS.tavilyApiKey]: tavilyApiKey,
       [STORAGE_KEYS.traceContentEnabled]: traceContentEnabled,
+      [STORAGE_KEYS.deepModelEnabled]: deepModelEnabled,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
@@ -73,6 +76,16 @@ export default function App() {
           style={{ marginRight: '0.5rem' }}
         />
         Record question/answer text in run traces
+      </label>
+      <label style={{ display: 'block', marginBottom: '1rem' }}>
+        <input
+          type="checkbox"
+          checked={deepModelEnabled}
+          disabled={!nebiusApiKey.trim()}
+          onChange={(e) => setDeepModelEnabled(e.target.checked)}
+          style={{ marginRight: '0.5rem' }}
+        />
+        Use the deeper Nemotron Ultra model (needs your own Nebius key; slower and costs more)
       </label>
       <button onClick={handleSave}>Save</button>
       {saved && <span style={{ marginLeft: '0.75rem' }}>Saved</span>}

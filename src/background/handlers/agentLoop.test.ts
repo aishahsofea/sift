@@ -1318,6 +1318,31 @@ describe('a trace for every exit (#18)', () => {
     expect(second).toMatchObject({ index: 1, toolCalls: [], usage: undefined })
   })
 
+  it.each([
+    [true, 'deep'],
+    [false, 'routine'],
+  ])('asks for the %s deep-model setting as the %s tier', async (deepModel, tier) => {
+    vi.mocked(getApiKeys).mockResolvedValue({ nebiusApiKey: 'k', tavilyApiKey: undefined, deepModel })
+    scriptModel(answer('1,200.'))
+    await ask()
+
+    expect(vi.mocked(streamAgentTurn).mock.calls[0][2]).toMatchObject({ tier })
+  })
+
+  it('counts cite_page calls with a rejected quote', async () => {
+    scriptModel(cite('A quote the page never says, long enough to check.'), cite('Another invented line, also long enough to check.'), cite(QUOTE), answer('1,200.'))
+    await ask()
+
+    expect(traced()[0]).toMatchObject({ citeRejections: 2 })
+  })
+
+  it('records no rejections for a clean cite', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+    await ask()
+
+    expect(traced()[0]).toMatchObject({ citeRejections: 0 })
+  })
+
   it('keeps the discarded answer of a quote-first nudge, redacted unless the toggle is on', async () => {
     scriptModel(answer('Unquoted guess.'), cite(QUOTE), answer('1,200.'))
     await ask()

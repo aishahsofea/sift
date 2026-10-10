@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-25
-- Related: [ADR 0001](0001-model-driven-agent-loop.md)
+- Related: [ADR 0001](0001-model-driven-agent-loop.md), [ADR 0012](0012-nemotron-model-tiers.md) (adds opt-in Ultra)
 
 ## Context
 

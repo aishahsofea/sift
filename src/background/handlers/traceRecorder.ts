@@ -36,6 +36,7 @@ export interface TraceRecorder {
   promptHash?: string
   toolsHash?: string
   askedToQuote: boolean
+  citeRejections: number
   forcedNudgeSent: boolean
   forcedRetrySent: boolean
 }
@@ -50,6 +51,7 @@ export function createTraceRecorder({ tabId, question, selection, contentEnabled
     ...(selection ? { selection: toTracedText(selection, contentEnabled) } : {}),
     rounds: [],
     askedToQuote: false,
+    citeRejections: 0,
     forcedNudgeSent: false,
     forcedRetrySent: false,
   }
@@ -119,6 +121,7 @@ export function finalizeTrace(recorder: TraceRecorder, outcome: FinalizeOutcome)
     ...(recorder.promptHash === undefined ? {} : { promptHash: recorder.promptHash }),
     ...(recorder.toolsHash === undefined ? {} : { toolsHash: recorder.toolsHash }),
     askedToQuote: recorder.askedToQuote,
+    citeRejections: recorder.citeRejections,
     forcedNudgeSent: recorder.forcedNudgeSent,
     forcedRetrySent: recorder.forcedRetrySent,
     rounds: recorder.rounds,

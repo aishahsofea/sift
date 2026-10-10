@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { resolveNemotronModel } from '../background/nebius/modelDiscovery'
+import { pinNemotronModel, resolveNemotronModel } from '../background/nebius/modelDiscovery'
 import { extractTavily, searchTavily, type TavilySearchResult } from '../background/tavily/client'
 import { appendHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../background/history/sessionHistory'
 import { getApiKeys } from '../background/keys'
@@ -25,6 +25,7 @@ let modelLogged = false
 async function ensureModelLogged(apiKey: string): Promise<void> {
   if (modelLogged) return
   modelLogged = true
+  if (process.env.EVAL_MODEL) pinNemotronModel(process.env.EVAL_MODEL)
   const model = await resolveNemotronModel(apiKey)
   console.log(`[eval] resolved model: ${model}`)
 }

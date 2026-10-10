@@ -119,7 +119,7 @@ export async function runAgentLoop(
   const recorder = createTraceRecorder({ tabId, question, selection: quoted, contentEnabled: await readTraceToggle() })
 
   try {
-    const { nebiusApiKey, tavilyApiKey, nebiusBaseUrl, tavilyBaseUrl } = await getApiKeys()
+    const { nebiusApiKey, tavilyApiKey, nebiusBaseUrl, tavilyBaseUrl, deepModel } = await getApiKeys()
     if (!nebiusApiKey) {
       const message = 'Add your Nebius API key in Options before asking questions.'
       await persistTrace(recorder, { status: 'error' })
@@ -213,6 +213,7 @@ export async function runAgentLoop(
       const turn = await streamAgentTurn(nebiusApiKey, turnMessages, {
         baseUrl: nebiusBaseUrl,
         signal: abort.signal,
+        tier: deepModel ? 'deep' : 'routine',
         tools: forced || !roundTools.length ? undefined : roundTools,
         // An answer that is about to be thrown away is not shown while it is written.
         onContent: (delta) => {
@@ -508,7 +509,7 @@ function quotesFromSearch(state: LoopState): number {
 }
 
 // Fabricated quotes are a recoverable error, never the enforcement point (ADR 0005).
-function citePage({ port, citeEnabled, quotable, state }: ToolContext, quotes: string[]): unknown {
+function citePage({ port, citeEnabled, quotable, state, recorder }: ToolContext, quotes: string[]): unknown {
   if (!citeEnabled) {
     state.problems.push('cite_page is not available.')
     return { error: 'cite_page is not available.' }
@@ -519,6 +520,7 @@ function citePage({ port, citeEnabled, quotable, state }: ToolContext, quotes: s
   const { verified, errors } = verifyQuotes(quotable, quotes)
   for (const quote of verified) state.verifiedQuotes.add(quote)
   state.problems.push(...errors)
+  if (errors.length) recorder.citeRejections++
 
   if (!state.verifiedQuotes.size) {
     return { verified, error: `${errors.join('; ')}. ${CITE_RECOVERY_HINT}` }

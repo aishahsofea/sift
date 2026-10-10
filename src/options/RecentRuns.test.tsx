@@ -12,6 +12,7 @@ const trace = (id: string, over: Partial<AgentTrace> = {}): AgentTrace => ({
   extensionVersion: '0.0.1',
   question: { length: 12 },
   askedToQuote: false,
+  citeRejections: 0,
   forcedNudgeSent: false,
   forcedRetrySent: false,
   rounds: [],

@@ -56,7 +56,7 @@ loop — the model decides when to search; see
   (`transformer-circuits.pub`, the #5 page), plus that page's companion paper
   fetched through a mocked `fetch_page` (#7, `fetchPageEscalation.eval.ts`).
   `EVAL_REPEATS` controls how many
-  times each case repeats (default 5). Separate from `npm run test` (a
+  times each case repeats (default 5); `EVAL_MODEL=<id>` pins the model. Separate from `npm run test` (a
   different Vitest config, `*.eval.ts` not `*.test.ts`) because these calls hit
   the real API and cost real time; see [ADR 0007](docs/adr/0007-grounding-eval-set.md).
   Run one eval process at a time: several at once against one key get 4xx

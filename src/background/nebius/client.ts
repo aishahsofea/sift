@@ -1,7 +1,7 @@
 import { NEBIUS_BASE_URL, NEBIUS_STREAM_IDLE_TIMEOUT_MS } from '../../shared/constants'
 import type { AgentTraceTiming, TokenUsage } from '../../shared/types'
 import { withRetry } from '../../shared/withRetry'
-import { resolveNemotronModel } from './modelDiscovery'
+import { resolveNemotronModel, type ModelTier } from './modelDiscovery'
 import type { ChatMessage } from './promptAssembly'
 import type { RawToolCall } from './schema'
 
@@ -28,6 +28,8 @@ interface StreamAgentTurnOptions {
   baseUrl?: string
   /** Aborts the request and the stream read, e.g. when the user stops the answer. */
   signal?: AbortSignal
+  /** Which model class answers; the deep one is opt-in (ADR 0012). */
+  tier?: ModelTier
   /** Fires per visible-answer delta. Never fires with leading or empty whitespace. */
   onContent: (delta: string) => void
 }
@@ -36,11 +38,11 @@ interface StreamAgentTurnOptions {
 export async function streamAgentTurn(
   apiKey: string,
   messages: ChatMessage[],
-  { tools, baseUrl = NEBIUS_BASE_URL, signal, onContent }: StreamAgentTurnOptions,
+  { tools, baseUrl = NEBIUS_BASE_URL, signal, tier, onContent }: StreamAgentTurnOptions,
 ): Promise<AgentTurn> {
   // Start of this round's timing, before model resolution and the POST (real latency on a cold worker).
   const startedAt = Date.now()
-  const model = await resolveNemotronModel(apiKey, baseUrl)
+  const model = await resolveNemotronModel(apiKey, baseUrl, tier)
 
   // Aborts on silence, not total duration (#28); re-armed on every sign of life so long answers can stream.
   const controller = new AbortController()

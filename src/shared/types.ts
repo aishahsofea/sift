@@ -144,6 +144,8 @@ export interface AgentTrace {
   promptHash?: string
   toolsHash?: string
   askedToQuote: boolean
+  /** cite_page calls with a rejected quote. */
+  citeRejections: number
   forcedNudgeSent: boolean
   forcedRetrySent: boolean
   rounds: AgentTraceRound[]
