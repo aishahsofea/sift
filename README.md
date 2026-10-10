@@ -15,10 +15,13 @@ Nemotron model.
    [latest release](https://github.com/aishahsofea/sift/releases/latest) and unzip it.
 2. Go to `chrome://extensions`, enable **Developer mode**, click **Load unpacked**
    and select the unzipped folder.
-3. No setup needed: the release build uses a shared demo server for the model and
-   search, with daily limits. (Optional: under **Details → Extension options**, add
-   your own Nebius and Tavily keys to call them directly. Page text and questions
-   pass through the demo server only while a key is blank.)
+3. No setup needed. The release build uses a shared demo server for the model and
+   search, with daily limits that reset at midnight UTC. If the model's limit is
+   hit, Sift says to add your own keys. (If search's limit is hit, see
+   [Where answers come from](#where-answers-come-from).) Optional: under
+   **Details → Extension options**, add your own Nebius and Tavily keys to call
+   them directly. Page text and questions go through the demo server for any
+   service whose key is blank.
 4. Open any `http(s)://` page and click the Sift toolbar icon to ask a question.
 
 ## How it uses Nebius and NVIDIA
@@ -93,6 +96,8 @@ model searches the current site.
 - It can open a full result page when a snippet isn't enough.
 - It gets three rounds of searching, then answers with what it has.
 - The panel names each search as it runs.
+- If search fails or hits its daily cap, Sift still answers from the page and
+  says search was unavailable.
 
 ### Answer labels
 
