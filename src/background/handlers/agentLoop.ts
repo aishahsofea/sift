@@ -333,7 +333,7 @@ async function finish(
     role: 'assistant',
     content: answer,
     source,
-    ...(quotes.length ? { quotes } : {}),
+    ...(quotes.length ? { quotes, url: page.url } : {}),
     ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
   }
 

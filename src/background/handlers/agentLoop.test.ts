@@ -198,6 +198,14 @@ describe('quote-then-answer (ADR 0005)', () => {
     ])
   })
 
+  it('records the page the quotes came from, and only alongside quotes', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+    expect((await ask()).turn.url).toBe(wholePage.url)
+
+    scriptModel(answer('About 500.'), answer('About 500.'))
+    expect(await ask()).toMatchObject({ turn: expect.not.objectContaining({ url: expect.anything() }) })
+  })
+
   it('tells the model which quotes were verified', async () => {
     scriptModel(cite(QUOTE), answer('1,200.'))
 
