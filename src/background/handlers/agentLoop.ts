@@ -432,7 +432,8 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
     const domain = scopeToDomain(page.url)
     post(port, { type: 'ASK_STEP', step: { kind: 'searching', domain, query: call.args.query } })
 
-    const results = await searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl, context.signal)
+    const results = await withWebFallback(context, () => searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl, context.signal))
+    if (!Array.isArray(results)) return results
     for (const result of results) state.allowedUrls.add(result.url)
     if (results.length) state.usedWeb = true
     return { results, ...(citeEnabled ? { note: SEARCH_NOTE } : {}) }
@@ -444,7 +445,8 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   }
 
   post(port, { type: 'ASK_STEP', step: { kind: 'reading', url: call.args.url } })
-  const raw = await extractTavily(tavilyApiKey, call.args.url, tavilyBaseUrl, context.signal)
+  const raw = await withWebFallback(context, () => extractTavily(tavilyApiKey, call.args.url, tavilyBaseUrl, context.signal))
+  if (typeof raw === 'object' && raw !== null) return raw
   if (!raw) {
     return { error: "That page couldn't be read. Use the search snippets, or search again." }
   }
@@ -456,6 +458,19 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   // FETCH_NOTE_CUT shows regardless of citeEnabled: it's the only place the model learns the fetch was cut.
   const note = fetched.truncated ? FETCH_NOTE_CUT(fetched.charsOmitted) : citeEnabled ? FETCH_NOTE : undefined
   return { url: call.args.url, content: fetched.content, ...(note ? { note } : {}) }
+}
+
+const WEB_UNAVAILABLE = { error: 'Site search is unavailable right now. Answer from the page, and say search was unavailable.' }
+
+// A failed Tavily call becomes a tool error so the turn still answers; an abort still ends it.
+async function withWebFallback<T>({ signal, state }: ToolContext, call: () => Promise<T>): Promise<T | typeof WEB_UNAVAILABLE> {
+  try {
+    return await call()
+  } catch (error) {
+    if (signal.aborted) throw error
+    state.problems.push(error instanceof Error ? error.message : String(error))
+    return WEB_UNAVAILABLE
+  }
 }
 
 // A cut fetch_page result beats the tab page (#7); fetched passages never feed cite_page (ADR 0005).
