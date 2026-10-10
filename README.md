@@ -16,7 +16,8 @@ Nemotron model.
 2. Go to `chrome://extensions`, enable **Developer mode**, click **Load unpacked**
    and select the unzipped folder.
 3. No setup needed: the release build uses a shared demo server for the model and
-   search, with daily limits. (Optional: under **Details → Extension options**, add
+   search, with daily limits that reset at midnight UTC. When one is hit, the
+   message says to add your own keys. (Optional: under **Details → Extension options**, add
    your own Nebius and Tavily keys to call them directly. Page text and questions
    pass through the demo server only while a key is blank.)
 4. Open any `http(s)://` page and click the Sift toolbar icon to ask a question.
@@ -93,6 +94,8 @@ model searches the current site.
 - It can open a full result page when a snippet isn't enough.
 - It gets three rounds of searching, then answers with what it has.
 - The panel names each search as it runs.
+- If search fails or hits its daily cap, Sift still answers from the page and
+  says search was unavailable.
 
 ### Answer labels
 
