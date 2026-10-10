@@ -4,6 +4,7 @@ import { AssistantComposer, AssistantThread, Icon } from './components/Assistant
 import { SiftRuntimeProvider } from './components/SiftRuntimeProvider'
 import { EmptyChatState } from './components/EmptyChatState'
 import { MissingApiKeysState } from './components/MissingApiKeysState'
+import { TooltipLayer } from './components/TooltipLayer'
 import { TruncationNotice } from './components/TruncationNotice'
 import { UnreadablePageState } from './components/UnreadablePageState'
 import { useActiveTab } from './hooks/useActiveTab'
@@ -47,11 +48,12 @@ export default function App() {
 
   return (
     <main>
+      <TooltipLayer />
       <header className="app-header">
         <h1>Sift</h1>
         {chatReady && turns.length > 0 && (
           <div className="header-actions">
-            <button onClick={copyConversation} className="header-action" aria-label="Copy conversation" title={copied ? 'Copied' : 'Copy conversation'}>
+            <button onClick={copyConversation} className="header-action" aria-label="Copy conversation" data-tooltip={copied ? 'Copied' : 'Copy conversation'}>
               <Icon>
                 {copied ? (
                   <path d="M20 6 9 17l-5-5" />
@@ -63,7 +65,7 @@ export default function App() {
                 )}
               </Icon>
             </button>
-            <button onClick={downloadConversation} className="header-action" aria-label="Download as Markdown" title="Download as Markdown">
+            <button onClick={downloadConversation} className="header-action" aria-label="Download as Markdown" data-tooltip="Download as Markdown">
               <Icon>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <path d="m7 10 5 5 5-5" />
@@ -71,7 +73,7 @@ export default function App() {
               </Icon>
             </button>
             <span className="header-divider" aria-hidden="true" />
-            <button onClick={clear} className="header-action header-action-danger" aria-label="Clear conversation" title="Clear conversation">
+            <button onClick={clear} className="header-action header-action-danger" aria-label="Clear conversation" data-tooltip="Clear conversation">
               <Icon>
                 <path d="M3 6h18" />
                 <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
