@@ -1,3 +1,4 @@
+import { capSelection } from '../../shared/truncate'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 
 export interface ToolCallPart {
@@ -30,12 +31,34 @@ export function assembleAgentMessages(
   history: ChatTurn[],
   question: string,
   options: AgentPromptOptions,
+  selection?: string,
 ): ChatMessage[] {
   return [
     { role: 'system', content: buildAgentSystemPrompt(page, options) },
-    ...history.map((turn) => ({ role: turn.role, content: turn.content })),
-    { role: 'user', content: question },
+    ...history.map((turn) => ({
+      role: turn.role,
+      content: turn.role === 'user' ? userMessage(turn.content, turn.selection, options) : turn.content,
+    })),
+    { role: 'user', content: userMessage(question, selection, options) },
   ]
+}
+
+function userMessage(question: string, selection: string | undefined, { pageSearchEnabled }: AgentPromptOptions): string {
+  if (!selection) return question
+
+  const { text, truncated } = capSelection(selection)
+  const cutNotice = pageSearchEnabled
+    ? 'The selection was cut short; call search_page to find the rest of it.'
+    : 'The selection was cut short.'
+  return [
+    'The user selected this passage on the page:',
+    '"""',
+    text,
+    '"""',
+    ...(truncated ? [cutNotice] : []),
+    '',
+    `Question: ${question}`,
+  ].join('\n')
 }
 
 // Verified prompt surface (scripts/test-nebius-tools.mjs keeps a copy); one line made Nano cite snippets.

@@ -23,7 +23,8 @@ export type ContentScriptMessage =
 export const ASK_PORT_NAME = 'sift-ask'
 
 // `rewind` drops that many turns from the end of history first: an edited question replaces its turn (#46).
-export type AskPortRequest = { type: 'START_ASK'; tabId: number; question: string; rewind?: number }
+// `selection` is page text the user quoted with the question.
+export type AskPortRequest = { type: 'START_ASK'; tabId: number; question: string; rewind?: number; selection?: string }
 
 export type AskPortMessage =
   | { type: 'ASK_STEP'; step: AgentStep }

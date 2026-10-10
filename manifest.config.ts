@@ -13,7 +13,7 @@ export default defineManifest({
   // (#14, ADR 0008), which changes *when* a click happens relative to the tab it
   // opens for, but that combination hasn't been re-verified against activeTab, so
   // this stays broad rather than risking a regression on a guess.
-  permissions: ['sidePanel', 'storage', 'scripting'],
+  permissions: ['sidePanel', 'storage', 'scripting', 'contextMenus'],
   host_permissions: ['http://*/*', 'https://*/*'],
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   // No default_path (#14): declaring one makes Chrome fall back to a single global

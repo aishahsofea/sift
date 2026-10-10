@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { ActionBarPrimitive, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { describeSource, explainSource } from '../sourceLabel'
 import { describeTruncatedAnswer } from '../truncationLabel'
+import { usePendingSelection } from '../hooks/usePendingSelection'
 import { PendingIndicator } from './PendingIndicator'
 import { Table } from './MessageBubble'
 import type { AnswerSource } from '../../shared/types'
@@ -31,6 +32,7 @@ function Message() {
   const custom = useAuiState((s) => s.message.metadata.custom) as {
     source?: AnswerSource
     quotes?: string[]
+    quote?: { text: string }
     truncated?: boolean
     charsOmitted?: number
   }
@@ -73,6 +75,7 @@ function Message() {
           {describeSource(custom.source, custom.quotes, { truncated: custom.truncated })}
         </span>
       )}
+      {custom.quote && <blockquote className="message-quote">{custom.quote.text}</blockquote>}
       <MessagePrimitive.Parts components={{ Text: ({ text }) => <MarkdownText text={text} /> }} />
       {custom.truncated && custom.charsOmitted !== undefined && (
         <p className="message-bubble-truncated">{describeTruncatedAnswer(custom.charsOmitted)}</p>
@@ -134,9 +137,19 @@ export function AssistantThread({ pendingLabel }: { pendingLabel: string | null 
   )
 }
 
-export function AssistantComposer() {
+export function AssistantComposer({ tabId }: { tabId: number | null }) {
+  usePendingSelection(tabId)
   return (
     <ComposerPrimitive.Root className="chat-input">
+      <ComposerPrimitive.Quote className="composer-quote">
+        <ComposerPrimitive.QuoteText className="composer-quote-text" />
+        <ComposerPrimitive.QuoteDismiss className="composer-quote-dismiss" aria-label="Remove quote" title="Remove quote">
+          <Icon>
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </Icon>
+        </ComposerPrimitive.QuoteDismiss>
+      </ComposerPrimitive.Quote>
       <ComposerPrimitive.Input placeholder="Ask about this page…" />
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>

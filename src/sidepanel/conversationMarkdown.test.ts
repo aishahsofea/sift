@@ -26,6 +26,11 @@ describe('buildConversationMarkdown', () => {
     expect(md).toContain('> Pro: $12 per month\n> billed yearly')
   })
 
+  it('exports a question\'s quoted passage as a block before the question', () => {
+    const md = buildConversationMarkdown(page, [{ role: 'user', content: 'What does this mean?', selection: 'Billed yearly\n\nCancel any time' }])
+    expect(md).toContain('## Question\n\n> Billed yearly\n>\n> Cancel any time\n\nWhat does this mean?')
+  })
+
   it('omits the source line and quotes when an answer has none', () => {
     const md = buildConversationMarkdown(page, [{ role: 'assistant', content: 'Hi' }])
     expect(md).not.toContain('Source:')

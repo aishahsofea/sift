@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { pendingSelectionKey } from '../../shared/storageKeys'
 import type { ExtractedPage } from '../../shared/types'
 import {
   appendHistoryTurns,
@@ -8,6 +9,7 @@ import {
   getFullPageContent,
   getHistory,
   setExtractedPage,
+  setPendingSelection,
 } from './sessionHistory'
 
 // A stand-in for chrome.storage.session: a map that, like the real one, refuses a write
@@ -137,11 +139,13 @@ describe('clearTabData', () => {
   it("removes a closed tab's page, whole text and history, and only that tab's", async () => {
     await setExtractedPage(1, head, fullText)
     await appendHistoryTurns(1, [{ role: 'user', content: 'q' }])
+    await setPendingSelection(1, 'quoted')
     await setExtractedPage(2, head, fullText)
     await appendHistoryTurns(2, [{ role: 'user', content: 'q' }])
 
     await clearTabData(1)
 
+    expect(store.has(pendingSelectionKey(1))).toBe(false)
     expect(await getExtractedPage(1)).toBeUndefined()
     expect(await getFullPageContent(1)).toBeUndefined()
     expect(await getHistory(1)).toEqual([])

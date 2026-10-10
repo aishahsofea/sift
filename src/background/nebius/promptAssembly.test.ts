@@ -297,4 +297,66 @@ describe('assembleAgentMessages', () => {
     const messages = assembleAgentMessages(page, history, 'When?', withSearch)
     expect(messages[1]).toEqual({ role: 'assistant', content: 'A product launch.' })
   })
+
+  describe('with a quoted selection', () => {
+    const withPageSearch = { searchEnabled: true, citeEnabled: true, pageSearchEnabled: true }
+    const quoted = (passage: string, question: string, notice = '') =>
+      `The user selected this passage on the page:\n"""\n${passage}\n"""\n${notice}\nQuestion: ${question}`
+
+    it('puts the passage before the question in the user message', () => {
+      const messages = assembleAgentMessages(page, [], 'What does this mean?', withSearch, 'March 3rd')
+      expect(messages.at(-1)).toEqual({ role: 'user', content: quoted('March 3rd', 'What does this mean?') })
+    })
+
+    it('keeps line breaks in the passage', () => {
+      const messages = assembleAgentMessages(page, [], 'q', withSearch, 'line one\nline two')
+      expect(messages.at(-1)?.content).toContain('line one\nline two')
+    })
+
+    it('does not touch the system prompt, so the cached prefix survives', () => {
+      const [plain] = assembleAgentMessages(page, [], 'q', withSearch)
+      const [withSelection] = assembleAgentMessages(page, [], 'q', withSearch, 'March 3rd')
+      expect(withSelection.content).toBe(plain.content)
+    })
+
+    it('flags a cut passage and points to search_page when the page is searchable', () => {
+      const messages = assembleAgentMessages(page, [], 'q', withPageSearch, 'a'.repeat(2_500))
+      const notice = 'The selection was cut short; call search_page to find the rest of it.\n'
+      expect(messages.at(-1)?.content).toBe(quoted(`${'a'.repeat(2_000)}…`, 'q', notice))
+    })
+
+    it('flags a cut passage without naming search_page when it is not offered', () => {
+      const content = assembleAgentMessages(page, [], 'q', withSearch, 'a'.repeat(2_500)).at(-1)!.content
+      expect(content).toContain('The selection was cut short.')
+      expect(content).not.toContain('search_page')
+    })
+
+    it('says nothing about a cut when the passage is whole', () => {
+      const messages = assembleAgentMessages(page, [], 'q', withPageSearch, 'March 3rd')
+      expect(messages.at(-1)?.content).not.toContain('cut short')
+    })
+
+    it('keeps the selection on a past question in history', () => {
+      const history: ChatTurn[] = [
+        { role: 'user', content: 'What is this?', selection: 'March 3rd' },
+        { role: 'assistant', content: 'A date.' },
+      ]
+      const messages = assembleAgentMessages(page, history, 'And?', withSearch)
+      expect(messages[1]).toEqual({ role: 'user', content: quoted('March 3rd', 'What is this?') })
+      expect(messages[2]).toEqual({ role: 'assistant', content: 'A date.' })
+    })
+
+    it('flags a capped selection in history as cut', () => {
+      const history: ChatTurn[] = [{ role: 'user', content: 'q', selection: `${'a'.repeat(2_000)}…` }]
+      const messages = assembleAgentMessages(page, history, 'q2', withSearch)
+      expect(messages[1].content).toContain('The selection was cut short.')
+    })
+
+    it('leaves a question without a selection exactly as asked', () => {
+      const history: ChatTurn[] = [{ role: 'user', content: 'What is this?' }]
+      const messages = assembleAgentMessages(page, history, 'And?', withSearch)
+      expect(messages[1]).toEqual({ role: 'user', content: 'What is this?' })
+      expect(messages[2]).toEqual({ role: 'user', content: 'And?' })
+    })
+  })
 })

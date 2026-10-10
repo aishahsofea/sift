@@ -18,6 +18,7 @@ import { collapseWhitespace } from './verifyQuotes'
 export interface CreateTraceRecorderInput {
   tabId: number
   question: string
+  selection?: string
   contentEnabled: boolean
 }
 
@@ -28,6 +29,7 @@ export interface TraceRecorder {
   startedAt: string
   contentEnabled: boolean
   question: TracedText
+  selection?: TracedText
   rounds: AgentTraceRound[]
   page?: AgentTracePage
   toolsOffered?: string[]
@@ -38,13 +40,14 @@ export interface TraceRecorder {
   forcedRetrySent: boolean
 }
 
-export function createTraceRecorder({ tabId, question, contentEnabled }: CreateTraceRecorderInput): TraceRecorder {
+export function createTraceRecorder({ tabId, question, selection, contentEnabled }: CreateTraceRecorderInput): TraceRecorder {
   return {
     id: crypto.randomUUID(),
     tabId,
     startedAt: new Date().toISOString(),
     contentEnabled,
     question: toTracedText(question, contentEnabled),
+    ...(selection ? { selection: toTracedText(selection, contentEnabled) } : {}),
     rounds: [],
     askedToQuote: false,
     forcedNudgeSent: false,
@@ -107,6 +110,7 @@ export function finalizeTrace(recorder: TraceRecorder, outcome: FinalizeOutcome)
     status: outcome.status,
     extensionVersion: outcome.extensionVersion,
     question: recorder.question,
+    ...(recorder.selection === undefined ? {} : { selection: recorder.selection }),
     ...(outcome.answer === undefined ? {} : { answer: toTracedText(outcome.answer, recorder.contentEnabled) }),
     ...(outcome.source === undefined ? {} : { source: outcome.source }),
     ...(outcome.sourceFacts === undefined ? {} : { sourceFacts: outcome.sourceFacts }),

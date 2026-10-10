@@ -28,6 +28,8 @@ export type AnswerSource = 'page' | 'web' | 'page+web' | 'unverified'
 export interface ChatTurn {
   role: 'user' | 'assistant'
   content: string
+  /** Page text the user quoted with this question, capped at MAX_SELECTION_CHARS. */
+  selection?: string
   source?: AnswerSource
   /**
    * Passages the model quoted that were found in the page text this turn (#10).
@@ -130,6 +132,7 @@ export interface AgentTrace {
   status: AgentTraceStatus
   extensionVersion: string
   question: TracedText
+  selection?: TracedText
   answer?: TracedText
   source?: AnswerSource
   sourceFacts?: AgentTraceSourceFacts
