@@ -1,6 +1,7 @@
 import { ASK_PORT_NAME, type AskPortRequest, type BackgroundRequest, type BackgroundResponse } from '../shared/messages'
 import { runAgentLoop } from './handlers/agentLoop'
 import { extractPage } from './handlers/extractPage'
+import { openQuote } from './handlers/openQuote'
 import { readSelection } from './handlers/pageSelection'
 import { clearHistory, clearTabData, getHistory, setPendingSelection } from './history/sessionHistory'
 import { getApiKeys } from './keys'
@@ -89,6 +90,13 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
           nebiusConfigured: Boolean(nebiusApiKey),
           tavilyConfigured: Boolean(tavilyApiKey),
         }
+        sendResponse(response)
+      })
+      return true
+
+    case 'OPEN_QUOTE':
+      openQuote(message.tabId, message.quote, message.url).then(() => {
+        const response: BackgroundResponse = { type: 'QUOTE_OPENED' }
         sendResponse(response)
       })
       return true

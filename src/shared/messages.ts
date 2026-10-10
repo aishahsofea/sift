@@ -5,12 +5,14 @@ export type BackgroundRequest =
   | { type: 'GET_HISTORY'; tabId: number }
   | { type: 'CLEAR_HISTORY'; tabId: number }
   | { type: 'GET_API_KEY_STATUS' }
+  | { type: 'OPEN_QUOTE'; tabId: number; quote: string; url?: string }
 
 export type BackgroundResponse =
   | { type: 'EXTRACT_PAGE_RESULT'; ok: true; page: ExtractedPage }
   | { type: 'EXTRACT_PAGE_RESULT'; ok: false; reason: UnreadableReason; message: string }
   | { type: 'HISTORY_RESULT'; turns: ChatTurn[] }
   | { type: 'CLEARED' }
+  | { type: 'QUOTE_OPENED' }
   | { type: 'API_KEY_STATUS'; nebiusConfigured: boolean; tavilyConfigured: boolean }
 
 // content script -> background, correlated via sender.tab.id since a content script can't supply its tabId.
