@@ -6,6 +6,9 @@ export const BYLINE_CHAR_LIMIT = 1_000
 // 20 turns = 10 user/assistant pairs of prior context sent with each new question.
 export const MAX_HISTORY_TURNS = 20
 
+// Most of a quoted page selection sent with a question; longer is cut with a marker.
+export const MAX_SELECTION_CHARS = 2_000
+
 // Tighter than MAX_HISTORY_TURNS: traces carry more text per round and the session quota is 10 MB (#18).
 export const MAX_TRACE_RUNS = 15
 

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from '@assistant-ui/react'
 import type { ChatTurn } from '../../shared/types'
+import { pageQuote, quoteText } from '../quote'
 
 // useChat stays the source of truth; assistant-ui only renders, with Sift's fields in metadata.custom.
 function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
@@ -9,7 +10,13 @@ function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
     role: turn.role,
     content: [{ type: 'text', text: turn.content }],
     metadata: {
-      custom: { source: turn.source, quotes: turn.quotes, truncated: turn.truncated, charsOmitted: turn.charsOmitted },
+      custom: {
+        source: turn.source,
+        quotes: turn.quotes,
+        truncated: turn.truncated,
+        charsOmitted: turn.charsOmitted,
+        quote: turn.selection ? pageQuote(turn.selection) : undefined,
+      },
     },
   }
 }
@@ -17,10 +24,10 @@ function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
 interface Props {
   turns: ChatTurn[]
   isRunning: boolean
-  onAsk: (question: string, editedIndex?: number) => void
+  onAsk: (question: string, editedIndex?: number, selection?: string) => void
   onReload: (userIndex: number) => void
-  /** Stops the running answer and returns its question. */
-  onStop: () => string
+  /** Stops the running answer and returns its question and quote. */
+  onStop: () => { question: string; selection?: string }
   children: ReactNode
 }
 
@@ -31,12 +38,14 @@ export function SiftRuntimeProvider({ turns, isRunning, onAsk, onReload, onStop,
     isRunning,
     convertMessage: convertTurn,
     onCancel: async (): Promise<void> => {
-      runtime.thread.composer.setText(onStop())
+      const { question, selection } = onStop()
+      runtime.thread.composer.setText(question)
+      runtime.thread.composer.setQuote(selection ? pageQuote(selection) : undefined)
     },
-    onNew: async (message) => onAsk(textOf(message)),
+    onNew: async (message) => onAsk(textOf(message), undefined, quoteText(message)),
     onEdit: async (message) => {
       const index = Number(message.sourceId?.replace('turn-', ''))
-      onAsk(textOf(message), Number.isInteger(index) ? index : undefined)
+      onAsk(textOf(message), Number.isInteger(index) ? index : undefined, quoteText(message))
     },
     onReload: async (parentId) => {
       const index = Number(parentId?.replace('turn-', ''))

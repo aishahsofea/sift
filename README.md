@@ -70,6 +70,19 @@ produces a `dist/` directory.
 Open any regular `http(s)://` page, then ask a question in the side panel.
 Answers stream in as they're written.
 
+### Asking about a passage
+
+Select text on the page, right-click, and choose **Ask Sift about this
+selection**. The panel opens with the passage quoted above the input; type your
+question and send. The model gets the passage along with the question.
+
+- Remove the quote with the × on it, or send without one.
+- Passages over 2,000 characters are cut, and the model is told so.
+- The quote stays with the question in the history, and in the copied and
+  downloaded conversation.
+- On pages where Sift can't read the selection directly, such as the built-in
+  PDF viewer, line breaks are lost.
+
 ### Where answers come from
 
 The model decides whether the page answers your question. If it doesn't, the

@@ -1,4 +1,5 @@
 import { MAX_HISTORY_TURNS } from '../../shared/constants'
+import { pendingSelectionKey } from '../../shared/storageKeys'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 
 function pageStorageKey(tabId: number): string {
@@ -44,6 +45,10 @@ export async function getFullPageContent(tabId: number): Promise<string | undefi
   return stored[key] as string | undefined
 }
 
+export async function setPendingSelection(tabId: number, selection: string): Promise<void> {
+  await chrome.storage.session.set({ [pendingSelectionKey(tabId)]: selection })
+}
+
 export async function getHistory(tabId: number): Promise<ChatTurn[]> {
   const key = historyStorageKey(tabId)
   const stored = await chrome.storage.session.get(key)
@@ -71,5 +76,5 @@ export async function clearHistory(tabId: number): Promise<void> {
 
 // Tab ids aren't reused, so nothing else would remove a closed tab's data, which includes a whole page.
 export async function clearTabData(tabId: number): Promise<void> {
-  await chrome.storage.session.remove([pageStorageKey(tabId), fullTextStorageKey(tabId), historyStorageKey(tabId)])
+  await chrome.storage.session.remove([pageStorageKey(tabId), fullTextStorageKey(tabId), historyStorageKey(tabId), pendingSelectionKey(tabId)])
 }

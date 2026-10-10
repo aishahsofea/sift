@@ -1,21 +1,40 @@
 import { ASK_PORT_NAME, type AskPortRequest, type BackgroundRequest, type BackgroundResponse } from '../shared/messages'
 import { runAgentLoop } from './handlers/agentLoop'
 import { extractPage } from './handlers/extractPage'
-import { clearHistory, clearTabData, getHistory } from './history/sessionHistory'
+import { readSelection } from './handlers/pageSelection'
+import { clearHistory, clearTabData, getHistory, setPendingSelection } from './history/sessionHistory'
 import { getApiKeys } from './keys'
 
 const SIDE_PANEL_PATH = 'src/sidepanel/index.html'
 
+const ASK_SELECTION_MENU_ID = 'sift-ask-selection'
+
 // Tab-scoped (#14): the panel opens here with `?tabId=`; setOptions isn't awaited so open() stays sync.
-chrome.action.onClicked.addListener((tab) => {
-  if (tab.id === undefined) return
-  const tabId = tab.id
+function openPanel(tabId: number) {
   chrome.sidePanel
     .setOptions({ tabId, path: `${SIDE_PANEL_PATH}?tabId=${tabId}`, enabled: true })
     .catch((error) => console.error(`[Sift] Failed to configure side panel for tab ${tabId}:`, error))
   chrome.sidePanel
     .open({ tabId })
     .catch((error) => console.error(`[Sift] Failed to open side panel for tab ${tabId}:`, error))
+}
+
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id !== undefined) openPanel(tab.id)
+})
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({ id: ASK_SELECTION_MENU_ID, title: 'Ask Sift about this selection', contexts: ['selection'] })
+})
+
+// Opens the panel first and synchronously, while the click's user gesture still counts.
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== ASK_SELECTION_MENU_ID || tab?.id === undefined) return
+  const tabId = tab.id
+  openPanel(tabId)
+  readSelection(tabId, info.frameId, info.selectionText)
+    .then((selection) => (selection ? setPendingSelection(tabId, selection) : undefined))
+    .catch((error) => console.error(`[Sift] couldn't pass the selection to tab ${tabId}:`, error))
 })
 
 // A closed tab's page, whole text and history go with it; reads only the id, so no `tabs` permission.
@@ -28,7 +47,7 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== ASK_PORT_NAME) return
   port.onMessage.addListener((message: AskPortRequest) => {
     if (message.type !== 'START_ASK') return
-    runAgentLoop(port, message.tabId, message.question, message.rewind)
+    runAgentLoop(port, message.tabId, message.question, message.rewind, message.selection)
   })
 })
 

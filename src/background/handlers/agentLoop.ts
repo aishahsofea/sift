@@ -1,7 +1,7 @@
 import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_FETCH_PASSAGES } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
 import type { AgentTrace, AgentTraceToolCall, ChatTurn, ExtractedPage } from '../../shared/types'
-import { truncate } from '../../shared/truncate'
+import { capSelection, truncate } from '../../shared/truncate'
 import { appendHistoryTurns, dropLastHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
 import { appendTrace } from '../history/agentTraces'
 import { getApiKeys, getTraceContentEnabled } from '../keys'
@@ -99,7 +99,13 @@ interface ToolContext {
   recorder: TraceRecorder
 }
 
-export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, question: string, rewind = 0): Promise<void> {
+export async function runAgentLoop(
+  port: chrome.runtime.Port,
+  tabId: number,
+  question: string,
+  rewind = 0,
+  selection?: string,
+): Promise<void> {
   // Panel closed or Stop dropped the port: abort in-flight work and run no more paid rounds.
   let panelGone = false
   const abort = new AbortController()
@@ -109,7 +115,8 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
   })
 
   // Made before the try so every exit, the catch included, can leave a trace (#18).
-  const recorder = createTraceRecorder({ tabId, question, contentEnabled: await readTraceToggle() })
+  const quoted = selection ? capSelection(selection).text : undefined
+  const recorder = createTraceRecorder({ tabId, question, selection: quoted, contentEnabled: await readTraceToggle() })
 
   try {
     const { nebiusApiKey, tavilyApiKey, nebiusBaseUrl, tavilyBaseUrl } = await getApiKeys()
@@ -143,7 +150,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
     // Before the history is read, so the prompt never sees the turns being replaced.
     if (rewind > 0) await dropLastHistoryTurns(tabId, rewind)
     const history = await getHistory(tabId)
-    const messages = assembleAgentMessages(page, history, question, options)
+    const messages = assembleAgentMessages(page, history, question, options, quoted)
     const state: LoopState = {
       allowedUrls: new Set(),
       usedWeb: false,
@@ -235,7 +242,7 @@ export async function runAgentLoop(port: chrome.runtime.Port, tabId: number, que
           post(port, { type: 'ASK_STEP', step: { kind: 'citing' } })
           continue
         }
-        await finish(context, tabId, question, content)
+        await finish(context, tabId, question, quoted, content)
         return
       }
 
@@ -295,7 +302,13 @@ function mustQuoteFirst({ citeEnabled, state }: ToolContext): boolean {
   return !(state.pageSearches > 0 && state.pagePassages === 0)
 }
 
-async function finish(context: ToolContext, tabId: number, question: string, content: string): Promise<void> {
+async function finish(
+  context: ToolContext,
+  tabId: number,
+  question: string,
+  selection: string | undefined,
+  content: string,
+): Promise<void> {
   const { port, page, state, recorder } = context
   const answer = stripCitationMarkers(content).trimEnd()
   if (!answer) {
@@ -324,7 +337,7 @@ async function finish(context: ToolContext, tabId: number, question: string, con
     ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
   }
 
-  await appendHistoryTurns(tabId, [{ role: 'user', content: question }, turn])
+  await appendHistoryTurns(tabId, [{ role: 'user', content: question, ...(selection ? { selection } : {}) }, turn])
   const trace = await persistTrace(recorder, {
     status: 'done',
     answer,

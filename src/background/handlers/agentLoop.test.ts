@@ -81,14 +81,14 @@ function scriptModel(...rounds: AgentTurn[]): void {
   })
 }
 
-async function ask(question = 'How many beta testers were there?') {
+async function ask(question = 'How many beta testers were there?', selection?: string) {
   const posted: AskPortMessage[] = []
   const port = {
     postMessage: (message: AskPortMessage) => posted.push(message),
     onDisconnect: { addListener: () => {} },
   } as unknown as chrome.runtime.Port
 
-  await runAgentLoop(port, 1, question)
+  await runAgentLoop(port, 1, question, 0, selection)
 
   const done = posted.find((m): m is Extract<AskPortMessage, { type: 'ASK_DONE' }> => m.type === 'ASK_DONE')
   const failed = posted.find((m): m is Extract<AskPortMessage, { type: 'ASK_ERROR' }> => m.type === 'ASK_ERROR')
@@ -120,6 +120,68 @@ beforeEach(() => {
   vi.mocked(getHistory).mockResolvedValue([])
   vi.mocked(appendHistoryTurns).mockResolvedValue([])
   vi.mocked(appendTrace).mockResolvedValue(undefined)
+})
+
+describe('a quoted selection', () => {
+  const selection = 'beta testers who filed over 3,000 bug reports'
+
+  it('reaches the model in the user message, ahead of the question', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask('What is this about?', selection)
+
+    const userMessage = modelCalls[0].messages.at(-1)
+    expect(userMessage?.content).toContain(`"\"\"\n${selection}\n"\"\"`)
+    expect(userMessage?.content).toMatch(/Question: What is this about\?$/)
+  })
+
+  it('is saved on the user turn, so a later question sees it in history', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask('What is this about?', selection)
+
+    expect(vi.mocked(appendHistoryTurns).mock.calls[0][1][0]).toEqual({
+      role: 'user',
+      content: 'What is this about?',
+      selection,
+    })
+  })
+
+  it('is capped before it is sent and saved', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask('q', 'a'.repeat(2_500))
+
+    expect(vi.mocked(appendHistoryTurns).mock.calls[0][1][0].selection).toBe(`${'a'.repeat(2_000)}…`)
+  })
+
+  it('leaves the user turn without a selection field when none was sent', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask()
+
+    expect(vi.mocked(appendHistoryTurns).mock.calls[0][1][0]).toEqual({
+      role: 'user',
+      content: 'How many beta testers were there?',
+    })
+  })
+
+  it('is traced by length only, with the content toggle off', async () => {
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask('q', selection)
+
+    expect(vi.mocked(appendTrace).mock.calls[0][0].selection).toEqual({ length: selection.length })
+  })
+
+  it('is traced with its text when the content toggle is on', async () => {
+    vi.mocked(getTraceContentEnabled).mockResolvedValue(true)
+    scriptModel(cite(QUOTE), answer('1,200.'))
+
+    await ask('q', selection)
+
+    expect(vi.mocked(appendTrace).mock.calls[0][0].selection).toEqual({ length: selection.length, text: selection })
+  })
 })
 
 describe('quote-then-answer (ADR 0005)', () => {

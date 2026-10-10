@@ -101,7 +101,7 @@ export default function App() {
               {error}
             </p>
           )}
-          <AssistantComposer />
+          <AssistantComposer tabId={tabId} />
         </SiftRuntimeProvider>
       )}
     </main>

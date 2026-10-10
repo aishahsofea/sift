@@ -314,6 +314,7 @@ main {
 
 .chat-input {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-top: 1px solid #e0e0e0;
@@ -401,4 +402,55 @@ main {
   display: inline-flex;
   align-items: center;
   color: #d93025;
+}
+
+.composer-quote {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-left: 2px solid currentColor;
+  border-radius: 0.25rem;
+  background: rgba(128, 128, 128, 0.12);
+  font-size: 0.8rem;
+}
+
+.composer-quote-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  opacity: 0.85;
+}
+
+.chat-input .composer-quote-dismiss {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.chat-input .composer-quote-dismiss:hover {
+  opacity: 1;
+}
+
+.message-quote {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  margin: 0 0 0.35rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid currentColor;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  opacity: 0.8;
 }

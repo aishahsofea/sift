@@ -24,6 +24,20 @@ describe('createTraceRecorder', () => {
     expect(recorder.question).toEqual({ length: 24, text: 'What does this page say?' })
   })
 
+  it('records the selection like the question: length always, text only with the toggle on', () => {
+    const off = createTraceRecorder({ tabId: 7, question: 'q', selection: 'a passage', contentEnabled: false })
+    const on = createTraceRecorder({ tabId: 7, question: 'q', selection: 'a passage', contentEnabled: true })
+
+    expect(off.selection).toEqual({ length: 9 })
+    expect(on.selection).toEqual({ length: 9, text: 'a passage' })
+  })
+
+  it('has no selection when none was quoted', () => {
+    const recorder = createTraceRecorder({ tabId: 7, question: 'q', contentEnabled: true })
+
+    expect(recorder).not.toHaveProperty('selection')
+  })
+
   it('starts with no rounds and every flag false', () => {
     const recorder = createTraceRecorder({ tabId: 7, question: 'q', contentEnabled: false })
 

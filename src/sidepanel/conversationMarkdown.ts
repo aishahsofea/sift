@@ -20,7 +20,7 @@ export function buildConversationMarkdown(page: PageInfo, turns: readonly ChatTu
 
   for (const turn of turns) {
     if (turn.role === 'user') {
-      parts.push(`## Question\n\n${turn.content}`)
+      parts.push(`## Question\n\n${turn.selection ? `${quoteBlock(turn.selection)}\n\n` : ''}${turn.content}`)
       continue
     }
     const lines = ['## Answer']
