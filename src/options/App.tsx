@@ -81,6 +81,7 @@ export default function App() {
         <input
           type="checkbox"
           checked={deepModelEnabled}
+          disabled={!nebiusApiKey.trim()}
           onChange={(e) => setDeepModelEnabled(e.target.checked)}
           style={{ marginRight: '0.5rem' }}
         />
