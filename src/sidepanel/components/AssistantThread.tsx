@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ActionBarPrimitive, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react'
@@ -7,7 +7,10 @@ import { describeTruncatedAnswer } from '../truncationLabel'
 import { usePendingSelection } from '../hooks/usePendingSelection'
 import { PendingIndicator } from './PendingIndicator'
 import { Table } from './MessageBubble'
+import type { BackgroundRequest } from '../../shared/messages'
 import type { AnswerSource } from '../../shared/types'
+
+const TabIdContext = createContext<number | null>(null)
 
 export function Icon({ children }: { children: ReactNode }) {
   return (
@@ -27,11 +30,35 @@ function MarkdownText({ text }: { text: string }) {
   )
 }
 
+function QuoteList({ quotes, url }: { quotes: string[]; url?: string }) {
+  const tabId = useContext(TabIdContext)
+  const open = (quote: string) => {
+    if (tabId === null) return
+    const request: BackgroundRequest = { type: 'OPEN_QUOTE', tabId, quote, url }
+    chrome.runtime.sendMessage(request)
+  }
+  return (
+    <details className="message-quotes">
+      <summary>{quotes.length === 1 ? '1 quote' : `${quotes.length} quotes`}</summary>
+      <ul>
+        {quotes.map((quote) => (
+          <li key={quote}>
+            <button type="button" className="message-quote-button" aria-label="Show quote on the page" title="Show on the page" onClick={() => open(quote)}>
+              {quote}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 function Message() {
   const role = useAuiState((s) => s.message.role)
   const custom = useAuiState((s) => s.message.metadata.custom) as {
     source?: AnswerSource
     quotes?: string[]
+    url?: string
     quote?: { text: string }
     truncated?: boolean
     charsOmitted?: number
@@ -75,6 +102,7 @@ function Message() {
           {describeSource(custom.source, custom.quotes, { truncated: custom.truncated })}
         </span>
       )}
+      {custom.quotes && custom.quotes.length > 0 && <QuoteList quotes={custom.quotes} url={custom.url} />}
       {custom.quote && <blockquote className="message-quote">{custom.quote.text}</blockquote>}
       <MessagePrimitive.Parts components={{ Text: ({ text }) => <MarkdownText text={text} /> }} />
       {custom.truncated && custom.charsOmitted !== undefined && (
@@ -126,14 +154,16 @@ function Message() {
   )
 }
 
-export function AssistantThread({ pendingLabel }: { pendingLabel: string | null }) {
+export function AssistantThread({ pendingLabel, tabId }: { pendingLabel: string | null; tabId: number | null }) {
   return (
-    <ThreadPrimitive.Root className="assistant-thread">
-      <ThreadPrimitive.Viewport className="chat-thread">
-        <ThreadPrimitive.Messages components={{ Message }} />
-        {pendingLabel && <PendingIndicator label={pendingLabel} />}
-      </ThreadPrimitive.Viewport>
-    </ThreadPrimitive.Root>
+    <TabIdContext.Provider value={tabId}>
+      <ThreadPrimitive.Root className="assistant-thread">
+        <ThreadPrimitive.Viewport className="chat-thread">
+          <ThreadPrimitive.Messages components={{ Message }} />
+          {pendingLabel && <PendingIndicator label={pendingLabel} />}
+        </ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </TabIdContext.Provider>
   )
 }
 
