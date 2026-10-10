@@ -18,6 +18,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_DEMO_PROXY_URL: ${{ vars.DEMO_PROXY_URL }}
+      - name: Check the build carries the demo proxy URL
+        env:
+          DEMO_PROXY_URL: ${{ vars.DEMO_PROXY_URL }}
+        run: test -n "$DEMO_PROXY_URL" && grep -rqF "$DEMO_PROXY_URL" dist
       - name: Zip the extension
         run: cd dist && zip -r ../sift-extension.zip .
       - name: Publish release
