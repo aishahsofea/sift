@@ -20,7 +20,7 @@ export function MessageBubble({ turn }: { turn: ChatTurn }) {
       {turn.source && (
         <span
           className={`message-bubble-source${turn.source === 'unverified' ? ' message-bubble-source-unverified' : ''}`}
-          title={explainSource(turn.source, { truncated: turn.truncated, quotes: turn.quotes?.length })}
+          data-tooltip={explainSource(turn.source, { truncated: turn.truncated, quotes: turn.quotes?.length })}
         >
           {describeSource(turn.source, turn.quotes, { truncated: turn.truncated })}
         </span>

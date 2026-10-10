@@ -43,7 +43,7 @@ function QuoteList({ quotes, url }: { quotes: string[]; url?: string }) {
       <ul>
         {quotes.map((quote) => (
           <li key={quote}>
-            <button type="button" className="message-quote-button" aria-label="Show quote on the page" title="Show on the page" onClick={() => open(quote)}>
+            <button type="button" className="message-quote-button" aria-label="Show quote on the page" data-tooltip="Show on the page" onClick={() => open(quote)}>
               {quote}
             </button>
           </li>
@@ -75,13 +75,13 @@ function Message() {
       <ComposerPrimitive.Root className="message-bubble message-bubble-user message-edit">
         <ComposerPrimitive.Input className="message-edit-input" autoFocus />
         <div className="message-actions">
-          <ComposerPrimitive.Cancel className="message-action message-action-icon" aria-label="Cancel edit" title="Cancel edit">
+          <ComposerPrimitive.Cancel className="message-action message-action-icon" aria-label="Cancel edit" data-tooltip="Cancel edit">
             <Icon>
               <path d="M18 6 6 18" />
               <path d="m6 6 12 12" />
             </Icon>
           </ComposerPrimitive.Cancel>
-          <ComposerPrimitive.Send className="message-action message-action-icon" aria-label="Resend" title="Resend">
+          <ComposerPrimitive.Send className="message-action message-action-icon" aria-label="Resend" data-tooltip="Resend">
             <Icon>
               <path d="M22 2 11 13" />
               <path d="M22 2 15 22l-4-9-9-4Z" />
@@ -97,7 +97,7 @@ function Message() {
       {custom.source && (
         <span
           className={`message-bubble-source${custom.source === 'unverified' ? ' message-bubble-source-unverified' : ''}`}
-          title={explainSource(custom.source, { truncated: custom.truncated, quotes: custom.quotes?.length })}
+          data-tooltip={explainSource(custom.source, { truncated: custom.truncated, quotes: custom.quotes?.length })}
         >
           {describeSource(custom.source, custom.quotes, { truncated: custom.truncated })}
         </span>
@@ -110,7 +110,7 @@ function Message() {
       )}
       {role === 'user' && (
         <ActionBarPrimitive.Root className="message-actions" hideWhenRunning>
-          <ActionBarPrimitive.Edit className="message-action message-action-icon" aria-label="Edit message" title="Edit message">
+          <ActionBarPrimitive.Edit className="message-action message-action-icon" aria-label="Edit message" data-tooltip="Edit message">
             <Icon>
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
@@ -120,7 +120,7 @@ function Message() {
       )}
       {role === 'assistant' && (
         <ActionBarPrimitive.Root className="message-actions" hideWhenRunning>
-          <ActionBarPrimitive.Copy copiedDuration={1500} className="message-action message-action-icon" aria-label="Copy answer" title="Copy answer">
+          <ActionBarPrimitive.Copy copiedDuration={1500} className="message-action message-action-icon" aria-label="Copy answer" data-tooltip="Copy answer">
             <span className="icon-copy">
               <Icon>
                 <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -134,14 +134,14 @@ function Message() {
             </span>
           </ActionBarPrimitive.Copy>
           {isLast && (
-            <ActionBarPrimitive.Reload className="message-action message-action-icon" aria-label="Regenerate answer" title="Regenerate answer">
+            <ActionBarPrimitive.Reload className="message-action message-action-icon" aria-label="Regenerate answer" data-tooltip="Regenerate answer">
               <Icon>
                 <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
                 <path d="M21 3v5h-5" />
               </Icon>
             </ActionBarPrimitive.Reload>
           )}
-          <ActionBarPrimitive.ExportMarkdown className="message-action message-action-icon" aria-label="Export as Markdown" title="Export as Markdown">
+          <ActionBarPrimitive.ExportMarkdown className="message-action message-action-icon" aria-label="Export as Markdown" data-tooltip="Export as Markdown">
             <Icon>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <path d="m7 10 5 5 5-5" />
@@ -173,7 +173,7 @@ export function AssistantComposer({ tabId }: { tabId: number | null }) {
     <ComposerPrimitive.Root className="chat-input">
       <ComposerPrimitive.Quote className="composer-quote">
         <ComposerPrimitive.QuoteText className="composer-quote-text" />
-        <ComposerPrimitive.QuoteDismiss className="composer-quote-dismiss" aria-label="Remove quote" title="Remove quote">
+        <ComposerPrimitive.QuoteDismiss className="composer-quote-dismiss" aria-label="Remove quote" data-tooltip="Remove quote">
           <Icon>
             <path d="M18 6 6 18" />
             <path d="m6 6 12 12" />
@@ -185,7 +185,7 @@ export function AssistantComposer({ tabId }: { tabId: number | null }) {
         <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running>
-        <ComposerPrimitive.Cancel className="stop-button" aria-label="Stop" title="Stop">
+        <ComposerPrimitive.Cancel className="stop-button" aria-label="Stop" data-tooltip="Stop">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
             <rect x="5" y="5" width="14" height="14" rx="2" />
           </svg>
