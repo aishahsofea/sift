@@ -36,6 +36,8 @@ export interface ChatTurn {
    * Absent when none were. Kept so the panel can show the evidence behind an answer.
    */
   quotes?: string[]
+  /** The page `quotes` were found on; history outlives navigation, so the panel can't read it off the tab. */
+  url?: string
   /**
    * This answer was written from a page cut short, without the model searching the page
    * for the part it lacked (#12). Carried per turn, not read off the current page:

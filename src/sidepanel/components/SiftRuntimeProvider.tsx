@@ -13,6 +13,7 @@ function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
       custom: {
         source: turn.source,
         quotes: turn.quotes,
+        url: turn.url,
         truncated: turn.truncated,
         charsOmitted: turn.charsOmitted,
         quote: turn.selection ? pageQuote(turn.selection) : undefined,

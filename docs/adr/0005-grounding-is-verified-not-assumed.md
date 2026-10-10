@@ -129,7 +129,8 @@ What the rule became in code, including the parts it did not say.
   quotes against all of it. Where it wasn't kept, this is still how it works.
 - The verified quotes are stored on the turn (`ChatTurn.quotes`). The chip says how
   many were checked ("from the page · 1 quote checked"), not that the answer was.
-  There is no evidence view yet.
+  The panel lists them under the chip, and clicking one highlights it on the
+  page (issue #63).
 - A `cite_page` round counts against `MAX_TOOL_ROUNDS` like any other.
 - With both search and `cite_page` on, the prompt gives the model two paths to an
   answer, and `cite_page` belongs to the page path only. Each search and fetch

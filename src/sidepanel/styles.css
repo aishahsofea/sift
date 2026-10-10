@@ -292,6 +292,41 @@ main {
   color: #52525b;
 }
 
+.message-quotes {
+  margin-bottom: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.message-quotes summary {
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.message-quotes ul {
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-quote-button {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.2rem;
+  padding: 0.2rem 0.4rem;
+  border: 0;
+  border-left: 2px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.message-quote-button:hover {
+  background: rgb(0 0 0 / 0.06);
+}
+
 .message-bubble-truncated {
   margin: 0.35rem 0 0;
   font-size: 0.7rem;

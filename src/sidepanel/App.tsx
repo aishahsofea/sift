@@ -94,7 +94,7 @@ export default function App() {
           {historyLoaded && turns.length === 0 ? (
             <EmptyChatState title={status.page.title} />
           ) : (
-            <AssistantThread pendingLabel={pendingStepLabel} />
+            <AssistantThread pendingLabel={pendingStepLabel} tabId={tabId} />
           )}
           {error && (
             <p role="alert" className="chat-error">

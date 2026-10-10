@@ -116,6 +116,20 @@ answer logs one line to the service worker console saying why it got its
 label. Details are in
 [ADR 0005](docs/adr/0005-grounding-is-verified-not-assumed.md).
 
+### Checking a quote
+
+Under the label, a collapsed **N quotes** list shows what the answer was checked
+against. Click a quote to see it on the page.
+
+- On the page it came from, the quote is highlighted and scrolled into view.
+  Clicking another quote moves the highlight.
+- If the quote isn't on the current page, or the tab has navigated away, the
+  original page opens in a new tab at that text.
+- Answers saved before this feature have no stored page. Clicking one only
+  highlights, and does nothing if the quote isn't found.
+- If the quote appears more than once, the first match is used.
+- Quotes inside iframes, shadow DOM and PDFs aren't matched.
+
 ### Long pages
 
 Only the first 120,000 characters of a page go into the prompt. The panel says
