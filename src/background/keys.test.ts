@@ -47,6 +47,18 @@ describe('getApiKeys with a demo proxy built in', () => {
   it('touches no proxy when both keys are saved', async () => {
     stubStorage({ nebiusApiKey: 'a', tavilyApiKey: 'b' })
 
-    expect(await getApiKeys()).toEqual({ nebiusApiKey: 'a', tavilyApiKey: 'b' })
+    expect(await getApiKeys()).toEqual({ nebiusApiKey: 'a', tavilyApiKey: 'b', deepModel: false })
+  })
+
+  it('honours the deep-model setting with a saved Nebius key', async () => {
+    stubStorage({ nebiusApiKey: 'a', tavilyApiKey: 'b', deepModelEnabled: true })
+
+    expect((await getApiKeys()).deepModel).toBe(true)
+  })
+
+  it('ignores the deep-model setting on the demo proxy, whose caps assume Nano', async () => {
+    stubStorage({ deepModelEnabled: true })
+
+    expect((await getApiKeys()).deepModel).toBe(false)
   })
 })

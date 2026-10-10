@@ -25,3 +25,4 @@ ADR NNNN` — edit the status of the old record instead of deleting it.
 | [0009](0009-fetch-page-escalates-and-reaches-past-its-cut.md) | A cut `fetch_page` result is searched like a cut page | proposed |
 | [0010](0010-abort-a-stalled-nebius-stream-on-silence.md) | Abort a stalled Nebius stream on silence, not total duration | accepted |
 | [0011](0011-agent-loop-run-tracing.md) | Trace each agent-loop run, content off by default | proposed |
+| [0012](0012-nemotron-model-tiers.md) | Nano is the default; Ultra is opt-in | accepted |

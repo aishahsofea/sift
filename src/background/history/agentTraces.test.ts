@@ -33,6 +33,7 @@ const trace = (id: string): AgentTrace => ({
   extensionVersion: '0.1.0',
   question: { length: 10 },
   askedToQuote: false,
+  citeRejections: 0,
   forcedNudgeSent: false,
   forcedRetrySent: false,
   rounds: [],

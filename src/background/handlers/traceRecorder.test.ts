@@ -43,6 +43,7 @@ describe('createTraceRecorder', () => {
 
     expect(recorder.rounds).toEqual([])
     expect(recorder.askedToQuote).toBe(false)
+    expect(recorder.citeRejections).toBe(0)
     expect(recorder.forcedNudgeSent).toBe(false)
     expect(recorder.forcedRetrySent).toBe(false)
   })

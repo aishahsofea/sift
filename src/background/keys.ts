@@ -7,19 +7,23 @@ export interface ApiKeys {
   /** Set only when the key is the install ID and the call goes to the demo proxy. */
   nebiusBaseUrl?: string
   tavilyBaseUrl?: string
+  /** The user opted into the deep model. Never set on the demo proxy, whose daily caps assume Nano. */
+  deepModel?: boolean
 }
 
 // Saved keys win; with none and a proxy built in, the install ID stands in (#39).
 export async function getApiKeys(): Promise<ApiKeys> {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.nebiusApiKey, STORAGE_KEYS.tavilyApiKey])
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.nebiusApiKey, STORAGE_KEYS.tavilyApiKey, STORAGE_KEYS.deepModelEnabled])
   const nebiusApiKey = (stored[STORAGE_KEYS.nebiusApiKey] as string | undefined) || undefined
   const tavilyApiKey = (stored[STORAGE_KEYS.tavilyApiKey] as string | undefined) || undefined
-  if (!DEMO_PROXY_URL || (nebiusApiKey && tavilyApiKey)) return { nebiusApiKey, tavilyApiKey }
+  const deepModel = Boolean(stored[STORAGE_KEYS.deepModelEnabled]) && Boolean(nebiusApiKey)
+  if (!DEMO_PROXY_URL || (nebiusApiKey && tavilyApiKey)) return { nebiusApiKey, tavilyApiKey, deepModel }
 
   const installId = await getInstallId()
   return {
     nebiusApiKey: nebiusApiKey ?? installId,
     tavilyApiKey: tavilyApiKey ?? installId,
+    deepModel,
     ...(nebiusApiKey ? {} : { nebiusBaseUrl: `${DEMO_PROXY_URL}/nebius` }),
     ...(tavilyApiKey ? {} : { tavilyBaseUrl: `${DEMO_PROXY_URL}/tavily` }),
   }

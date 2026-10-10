@@ -3,6 +3,7 @@ export const STORAGE_KEYS = {
   tavilyApiKey: 'tavilyApiKey',
   installId: 'installId',
   traceContentEnabled: 'traceContentEnabled',
+  deepModelEnabled: 'deepModelEnabled',
 } as const
 
 // A page selection waiting for its tab's panel to pick it up as a quote.

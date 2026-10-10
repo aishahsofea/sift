@@ -1,16 +1,26 @@
 import { NEBIUS_BASE_URL } from '../../shared/constants'
 
+export type ModelTier = 'routine' | 'deep'
+
 // Live-checked IDs in preference order: Nano first (ADR 0002), then Super; untested ones only as fallback.
-const NEMOTRON_CANDIDATES = [
+const ROUTINE_CANDIDATES = [
   'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
   'nvidia/nemotron-3-super-120b-a12b',
 ]
+const DEEP_CANDIDATES = ['nvidia/Nemotron-3-Ultra-550b-a55b']
 
-// Cached for the service worker's lifetime — cheap to keep, self-heals on restart.
-let cachedModelId: string | undefined
+// Cached per tier for the service worker's lifetime — cheap to keep, self-heals on restart.
+const cachedModelIds = new Map<ModelTier, string>()
 
-export async function resolveNemotronModel(apiKey: string, baseUrl = NEBIUS_BASE_URL): Promise<string> {
-  if (cachedModelId) return cachedModelId
+// Pins the model for evals; skips discovery, so the ID isn't checked against /models.
+export function pinNemotronModel(id: string): void {
+  cachedModelIds.set('routine', id)
+  cachedModelIds.set('deep', id)
+}
+
+export async function resolveNemotronModel(apiKey: string, baseUrl = NEBIUS_BASE_URL, tier: ModelTier = 'routine'): Promise<string> {
+  const cached = cachedModelIds.get(tier)
+  if (cached) return cached
 
   const res = await fetch(`${baseUrl}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -22,12 +32,13 @@ export async function resolveNemotronModel(apiKey: string, baseUrl = NEBIUS_BASE
   const body = (await res.json()) as { data: { id: string }[] }
   const allModels = body.data.map((m) => m.id)
   const nemotronModels = allModels.filter((id) => /nemotron/i.test(id))
-  const resolved = NEMOTRON_CANDIDATES.find((id) => allModels.includes(id)) ?? nemotronModels[0]
+  const candidates = tier === 'deep' ? [...DEEP_CANDIDATES, ...ROUTINE_CANDIDATES] : ROUTINE_CANDIDATES
+  const resolved = candidates.find((id) => allModels.includes(id)) ?? nemotronModels[0]
 
   if (!resolved) {
     throw new Error('No Nemotron model available on this Nebius account/region.')
   }
 
-  cachedModelId = resolved
+  cachedModelIds.set(tier, resolved)
   return resolved
 }

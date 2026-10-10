@@ -29,6 +29,9 @@ Nemotron model.
 - **NVIDIA Nemotron** (an open-source NVIDIA model) does all the reasoning:
   deciding whether the page answers the question, calling tools, and writing the
   answer.
+  Nemotron 3 Nano answers by default. With your own Nebius key you can switch on
+  Nemotron 3 Ultra in the options page; we tested it and it did not beat Nano on
+  grounding, so it stays opt-in ([ADR 0012](docs/adr/0012-nemotron-model-tiers.md)).
 - **Nebius Token Factory** serves it, with native tool calling and streaming.
   Every turn is one or more chat completions against it.
 - **Tavily** provides the site-scoped search the model reaches for when the page

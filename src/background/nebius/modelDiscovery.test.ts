@@ -7,6 +7,8 @@ async function freshResolve() {
   return mod.resolveNemotronModel
 }
 
+const ULTRA = 'nvidia/Nemotron-3-Ultra-550b-a55b'
+
 function stubModels(ids: string[]) {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
@@ -62,5 +64,18 @@ describe('resolveNemotronModel', () => {
     await resolve('key')
     await resolve('key')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('picks Ultra for the deep tier and Nano for the routine one', async () => {
+    stubModels(ACCOUNT_MODELS)
+    const resolve = await freshResolve()
+    expect(await resolve('key', undefined, 'deep')).toBe(ULTRA)
+    expect(await resolve('key', undefined, 'routine')).toBe('nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B')
+  })
+
+  it('serves the deep tier from the routine candidates when Ultra is gone', async () => {
+    stubModels(ACCOUNT_MODELS.filter((id) => id !== ULTRA))
+    const resolve = await freshResolve()
+    expect(await resolve('key', undefined, 'deep')).toBe('nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B')
   })
 })
