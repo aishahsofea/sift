@@ -549,6 +549,67 @@ describe('with a web result', () => {
   })
 })
 
+describe('a Tavily failure', () => {
+  const results = [{ title: 'Pricing', url: 'https://loomkit.example/pricing', content: 'Pro: $17.50.' }]
+  const unavailable = { error: 'Site search is unavailable right now. Answer from the page, and say search was unavailable.' }
+
+  it('hands the model a tool error when search fails, and still ends in an answer', async () => {
+    vi.mocked(searchTavily).mockRejectedValue(new Error('Request failed — check your API key in Options.'))
+    scriptModel(search('Loomkit Pro price'), answer('Search was unavailable; the page does not say.'))
+
+    const { turn, error } = await ask('How much is Pro?')
+
+    expect(error).toBeUndefined()
+    expect(toolResults(1)).toEqual([unavailable])
+    expect(turn.content).toBe('Search was unavailable; the page does not say.')
+    expect(logged()).toContain('Problems: Request failed')
+  })
+
+  it('does the same when fetch_page fails after a good search', async () => {
+    vi.mocked(searchTavily).mockResolvedValue(results)
+    vi.mocked(extractTavily).mockRejectedValue(new Error('network down'))
+    scriptModel(search('Loomkit Pro price'), toolRound('fetch_page', { url: results[0].url }), answer('Could not read it.'))
+
+    const { error } = await ask('How much is Pro?')
+
+    expect(error).toBeUndefined()
+    expect(toolResults(2)[1]).toEqual(unavailable)
+    expect(logged()).toContain('Problems: network down')
+  })
+
+  it('does the same when the demo proxy hits its daily limit', async () => {
+    const message = 'The shared demo has hit its daily limit. Add your own API keys in Options.'
+    vi.mocked(searchTavily).mockRejectedValue(new Error(message))
+    scriptModel(search('Loomkit Pro price'), answer('Search was unavailable.'))
+
+    const { error } = await ask('How much is Pro?')
+
+    expect(error).toBeUndefined()
+    expect(toolResults(1)).toEqual([unavailable])
+    expect(logged()).toContain(message)
+  })
+
+  it('still ends as a panel close when the panel goes during the search', async () => {
+    let disconnect = () => {}
+    const posted: AskPortMessage[] = []
+    const port = {
+      postMessage: (message: AskPortMessage) => posted.push(message),
+      onDisconnect: { addListener: (listener: () => void) => (disconnect = listener) },
+    } as unknown as chrome.runtime.Port
+    vi.mocked(searchTavily).mockImplementation(async () => {
+      disconnect()
+      throw new Error('aborted')
+    })
+    scriptModel(search('Loomkit Pro price'), answer('unreachable'))
+
+    await runAgentLoop(port, 1, 'How much is Pro?')
+
+    expect(modelCalls).toHaveLength(1)
+    expect(posted.some((m) => m.type === 'ASK_ERROR' || m.type === 'ASK_DONE')).toBe(false)
+    expect(vi.mocked(appendTrace).mock.calls.map(([trace]) => trace.status)).toEqual(['panel-closed'])
+  })
+})
+
 // A fetch_page result can come back cut (#7); search_page reaches its rest and beats a cut tab page.
 describe('a fetched page that comes back cut (#7)', () => {
   const results = [{ title: 'Board pruning', url: 'https://loomkit.example/help/board-pruning', content: 'An overview of board pruning.' }]
