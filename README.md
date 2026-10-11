@@ -22,7 +22,15 @@ Nemotron model.
    **Details → Extension options**, add your own Nebius and Tavily keys to call
    them directly. Page text and questions go through the demo server for any
    service whose key is blank.
-4. Open any `http(s)://` page and click the Sift toolbar icon to ask a question.
+4. Open any `http(s)://` page, such as a news article or a docs page, and click
+   the Sift toolbar icon. The side panel opens with a greeting that names the
+   page.
+5. Ask something the page answers. The answer streams in, labeled
+   **from the page · N quotes checked**. Open **N quotes** under it and click
+   one to see it highlighted on the page.
+6. Ask something the page doesn't answer. The panel shows
+   `Searching <site> for "…"` while the model searches the site, and the
+   answer is labeled **from the web**.
 
 ## How it uses Nebius and NVIDIA
 
