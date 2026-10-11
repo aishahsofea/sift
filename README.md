@@ -232,6 +232,22 @@ works around.
 Architecture decisions made since that plan are recorded in
 [docs/adr/](docs/adr/).
 
+## Third-party services
+
+Sift calls these services. Use of each is under its provider's terms.
+
+| Service | What it receives | Terms |
+| --- | --- | --- |
+| [Nebius Token Factory](https://tokenfactory.nebius.com), running NVIDIA Nemotron | The page text, its title and URL, the chat so far, any quoted selection, and search results | Nebius Token Factory's terms; the model is under the [NVIDIA Nemotron Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/) |
+| [Tavily](https://tavily.com) | The search queries the model writes, scoped to the current site, and result URLs the model opens | [Tavily Terms of Service](https://tavily.com/terms) |
+
+- Tavily's terms let it keep queries and results, including to train models.
+  Sift only sends Tavily the queries the model writes, not the page text.
+- With your own keys, Sift calls both services directly from the browser.
+- For any service whose key is blank, calls go through the demo proxy in
+  [worker/](worker/). It uses a shared key, caps use per install, per IP and
+  per day, and doesn't log request bodies.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
