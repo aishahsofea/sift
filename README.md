@@ -22,20 +22,50 @@ Nemotron model.
    **Details → Extension options**, add your own Nebius and Tavily keys to call
    them directly. Page text and questions go through the demo server for any
    service whose key is blank.
-4. Open any `http(s)://` page and click the Sift toolbar icon to ask a question.
+4. Open any `http(s)://` page, such as a news article or a docs page, and click
+   the Sift toolbar icon. The side panel opens with a greeting that names the
+   page.
+5. Ask something the page answers. The answer streams in, labeled
+   **from the page · N quotes checked**. Open **N quotes** under it and click
+   one to see it highlighted on the page.
+6. Ask something the page doesn't answer. The panel shows
+   `Searching <site> for "…"` while the model searches the site, and the
+   answer is labeled **from the web**.
 
 ## How it uses Nebius and NVIDIA
 
 - **NVIDIA Nemotron** (an open-source NVIDIA model) does all the reasoning:
   deciding whether the page answers the question, calling tools, and writing the
-  answer.
-  Nemotron 3 Nano answers by default. With your own Nebius key you can switch on
-  Nemotron 3 Ultra in the options page; we tested it and it did not beat Nano on
-  grounding, so it stays opt-in ([ADR 0012](docs/adr/0012-nemotron-model-tiers.md)).
+  answer. See [Model choice](#model-choice) for which one and why.
 - **Nebius Token Factory** serves it, with native tool calling and streaming.
   Every turn is one or more chat completions against it.
 - **Tavily** provides the site-scoped search the model reaches for when the page
   doesn't cover the question.
+
+### Model choice
+
+Nemotron 3 Nano answers by default, and the free demo always uses it, since
+its daily limits are sized for Nano. With your own Nebius key you can switch on
+Nemotron 3 Ultra in the options page. Super was tested and isn't used.
+
+| | Nano (default) | Super | Ultra (opt-in) |
+| --- | --- | --- | --- |
+| Tool-calling checks | 73 of 73 | 73 of 73 | not run |
+| Grounding eval, long-page case | 3 of 3 runs pass | not run | 4 of 6 runs pass |
+| Two tool rounds on a ~100K-character page | 1.5s + 1.9s | 2.6s + 4.6s | not measured |
+| Prompt tokens served from cache | 21,120 of 23,454 | 0 | not measured |
+
+- Super also made tool calls it didn't need
+  ([ADR 0002](docs/adr/0002-nemotron-nano-as-agent-model.md)).
+- Ultra's two failed answers were useless: one printed its own reasoning, the
+  other said it saw no question. Both were honestly labeled
+  [**not checked**](#answer-labels). Nano's 3 runs and Ultra's 6 are too few to
+  call Ultra worse, only "no better here"
+  ([ADR 0012](docs/adr/0012-nemotron-model-tiers.md)).
+- Nano also got the right label on every run of a separate short-page eval.
+  Most answers took 9 to 21 seconds. Answers that needed both the page and a
+  search took up to 46 seconds
+  ([ADR 0007](docs/adr/0007-grounding-eval-set.md)).
 
 ## Build from source
 
@@ -201,6 +231,22 @@ works around.
 
 Architecture decisions made since that plan are recorded in
 [docs/adr/](docs/adr/).
+
+## Third-party services
+
+Sift calls these services. Use of each is under its provider's terms.
+
+| Service | What it receives | Terms |
+| --- | --- | --- |
+| [Nebius Token Factory](https://tokenfactory.nebius.com), running NVIDIA Nemotron | The page text, its title and URL, the chat so far, any quoted selection, and search results | Nebius Token Factory's terms; the model is under the [NVIDIA Nemotron Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/) |
+| [Tavily](https://tavily.com) | The search queries the model writes, scoped to the current site, and result URLs the model opens | [Tavily Terms of Service](https://tavily.com/terms) |
+
+- Tavily's terms let it keep queries and results, including to train models.
+  Sift only sends Tavily the queries the model writes, not the page text.
+- With your own keys, Sift calls both services directly from the browser.
+- For any service whose key is blank, calls go through the demo proxy in
+  [worker/](worker/). It uses a shared key, caps use per install, per IP and
+  per day, and doesn't log request bodies.
 
 ## License
 
