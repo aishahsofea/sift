@@ -28,14 +28,36 @@ Nemotron model.
 
 - **NVIDIA Nemotron** (an open-source NVIDIA model) does all the reasoning:
   deciding whether the page answers the question, calling tools, and writing the
-  answer.
-  Nemotron 3 Nano answers by default. With your own Nebius key you can switch on
-  Nemotron 3 Ultra in the options page; we tested it and it did not beat Nano on
-  grounding, so it stays opt-in ([ADR 0012](docs/adr/0012-nemotron-model-tiers.md)).
+  answer. See [Model choice](#model-choice) for which one and why.
 - **Nebius Token Factory** serves it, with native tool calling and streaming.
   Every turn is one or more chat completions against it.
 - **Tavily** provides the site-scoped search the model reaches for when the page
   doesn't cover the question.
+
+### Model choice
+
+Nemotron 3 Nano answers by default, and the free demo always uses it, since
+its daily limits are sized for Nano. With your own Nebius key you can switch on
+Nemotron 3 Ultra in the options page. Super was tested and isn't used.
+
+| | Nano (default) | Super | Ultra (opt-in) |
+| --- | --- | --- | --- |
+| Tool-calling checks | 73 of 73 | 73 of 73 | not run |
+| Grounding eval, long-page case | 3 of 3 runs pass | not run | 4 of 6 runs pass |
+| Two tool rounds on a ~100K-character page | 1.5s + 1.9s | 2.6s + 4.6s | not measured |
+| Prompt tokens served from cache | 21,120 of 23,454 | 0 | not measured |
+
+- Super also made tool calls it didn't need
+  ([ADR 0002](docs/adr/0002-nemotron-nano-as-agent-model.md)).
+- Ultra's two failed answers were useless: one printed its own reasoning, the
+  other said it saw no question. Both were honestly labeled
+  [**not checked**](#answer-labels). Nano's 3 runs and Ultra's 6 are too few to
+  call Ultra worse, only "no better here"
+  ([ADR 0012](docs/adr/0012-nemotron-model-tiers.md)).
+- Nano also got the right label on every run of a separate short-page eval.
+  Most answers took 9 to 21 seconds. Answers that needed both the page and a
+  search took up to 46 seconds
+  ([ADR 0007](docs/adr/0007-grounding-eval-set.md)).
 
 ## Build from source
 
