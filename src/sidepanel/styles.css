@@ -221,12 +221,24 @@ main {
 .message-bubble-pending {
   align-self: flex-start;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.35rem;
   background: transparent;
   border: 1px dashed #d4d4d8;
   color: #52525b;
   font-size: 0.8rem;
+}
+
+.pending-current {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pending-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #71717a;
 }
 
 .pending-dots {
@@ -295,6 +307,22 @@ main {
 .message-quotes {
   margin-bottom: 0.25rem;
   font-size: 0.7rem;
+}
+
+.message-steps {
+  margin-bottom: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.message-steps summary {
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.message-steps ol {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  opacity: 0.8;
 }
 
 .message-quotes summary {

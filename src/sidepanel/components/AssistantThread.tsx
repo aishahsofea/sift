@@ -5,10 +5,12 @@ import { ActionBarPrimitive, ComposerPrimitive, MessagePrimitive, ThreadPrimitiv
 import { describeSource, explainSource } from '../sourceLabel'
 import { describeTruncatedAnswer } from '../truncationLabel'
 import { usePendingSelection } from '../hooks/usePendingSelection'
+import type { Pending } from '../hooks/useChat'
 import { PendingIndicator } from './PendingIndicator'
+import { StepList } from './StepList'
 import { Table } from './MessageBubble'
 import type { BackgroundRequest } from '../../shared/messages'
-import type { AnswerSource } from '../../shared/types'
+import type { AgentStep, AnswerSource } from '../../shared/types'
 
 const TabIdContext = createContext<number | null>(null)
 
@@ -62,6 +64,7 @@ function Message() {
     quote?: { text: string }
     truncated?: boolean
     charsOmitted?: number
+    steps?: AgentStep[]
   }
 
   // assistant-ui adds an empty running message on send; the pending indicator covers it, so skip it.
@@ -104,6 +107,7 @@ function Message() {
       )}
       {custom.quotes && custom.quotes.length > 0 && <QuoteList quotes={custom.quotes} url={custom.url} />}
       {custom.quote && <blockquote className="message-quote">{custom.quote.text}</blockquote>}
+      {custom.steps && custom.steps.length > 0 && <StepList steps={custom.steps} />}
       <MessagePrimitive.Parts components={{ Text: ({ text }) => <MarkdownText text={text} /> }} />
       {custom.truncated && custom.charsOmitted !== undefined && (
         <p className="message-bubble-truncated">{describeTruncatedAnswer(custom.charsOmitted)}</p>
@@ -154,13 +158,13 @@ function Message() {
   )
 }
 
-export function AssistantThread({ pendingLabel, tabId }: { pendingLabel: string | null; tabId: number | null }) {
+export function AssistantThread({ pending, tabId }: { pending: Pending | null; tabId: number | null }) {
   return (
     <TabIdContext.Provider value={tabId}>
       <ThreadPrimitive.Root className="assistant-thread">
         <ThreadPrimitive.Viewport className="chat-thread">
           <ThreadPrimitive.Messages components={{ Message }} />
-          {pendingLabel && <PendingIndicator label={pendingLabel} />}
+          {pending && <PendingIndicator label={pending.label} done={pending.done} />}
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
     </TabIdContext.Provider>

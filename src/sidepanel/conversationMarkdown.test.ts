@@ -37,6 +37,27 @@ describe('buildConversationMarkdown', () => {
     expect(md).not.toContain('Quoted')
   })
 
+  it('lists the steps the agent took as a numbered list', () => {
+    const md = buildConversationMarkdown(page, [
+      {
+        role: 'assistant',
+        content: 'Pro is $12.',
+        steps: [
+          { kind: 'searching', domain: 'example.com', query: 'pricing tiers' },
+          { kind: 'reading', url: 'https://example.com/pricing' },
+          { kind: 'citing', found: 3, total: 3 },
+        ],
+      },
+    ])
+    expect(md).toContain(
+      '**Steps:**\n\n1. Searching example.com for “pricing tiers”\n2. Reading example.com/pricing\n3. Checking quotes against the page: 3 of 3 found',
+    )
+  })
+
+  it('has no steps section for an answer without steps', () => {
+    expect(buildConversationMarkdown(page, [{ role: 'assistant', content: 'Hi' }])).not.toContain('Steps')
+  })
+
   it('notes an answer written from a cut-short page', () => {
     const md = buildConversationMarkdown(page, [
       { role: 'assistant', content: 'x', source: 'unverified', truncated: true, charsOmitted: 5000 },

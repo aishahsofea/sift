@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BackgroundRequest, BackgroundResponse } from '../../shared/messages'
 import { capSelection } from '../../shared/truncate'
-import type { ChatTurn } from '../../shared/types'
-import { describeStep } from '../stepLabel'
+import type { AgentStep, ChatTurn } from '../../shared/types'
+import { describeStep, describeStepDone } from '../stepLabel'
 import { reloadTarget, replaceFrom } from '../rewind'
 import { useAskStream } from './useAskStream'
+
+export interface Pending {
+  label: string
+  done: string[]
+}
 
 export function useChat(tabId: number | null) {
   const [turns, setTurns] = useState<ChatTurn[]>([])
@@ -79,11 +84,13 @@ export function useChat(tabId: number | null) {
   // Nothing streamed yet: show the pending indicator; the in-flight bubble has no source label yet.
   const hasStreamedText = stream.active && stream.text.length > 0
   const displayTurns: ChatTurn[] = hasStreamedText ? [...turns, { role: 'assistant', content: stream.text }] : turns
-  const pendingStepLabel = stream.active && !hasStreamedText ? pendingLabel(stream.step) : null
+  const pending = stream.active && !hasStreamedText ? describePending(stream.steps) : null
 
-  return { turns: displayTurns, asking: stream.active, pendingStepLabel, error, ask, reload, stop, clear, historyLoaded }
+  return { turns: displayTurns, asking: stream.active, pending, error, ask, reload, stop, clear, historyLoaded }
 }
 
-function pendingLabel(step: Parameters<typeof describeStep>[0] | null): string {
-  return step ? describeStep(step) : 'Thinking…'
+// The step running now is the last; the ones before it are done and stay listed.
+function describePending(steps: AgentStep[]): Pending {
+  const current = steps.at(-1)
+  return { label: current ? describeStep(current) : 'Thinking…', done: steps.slice(0, -1).map(describeStepDone) }
 }

@@ -13,7 +13,7 @@ import { buildConversationMarkdown, conversationFilename } from './conversationM
 
 export default function App() {
   const { tabId, status } = useActiveTab()
-  const { turns, asking, pendingStepLabel, error, ask, reload, stop, clear, historyLoaded } = useChat(tabId)
+  const { turns, asking, pending, error, ask, reload, stop, clear, historyLoaded } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -96,7 +96,7 @@ export default function App() {
           {historyLoaded && turns.length === 0 ? (
             <EmptyChatState title={status.page.title} />
           ) : (
-            <AssistantThread pendingLabel={pendingStepLabel} tabId={tabId} />
+            <AssistantThread pending={pending} tabId={tabId} />
           )}
           {error && (
             <p role="alert" className="chat-error">

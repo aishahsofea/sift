@@ -47,6 +47,8 @@ export interface ChatTurn {
    */
   truncated?: boolean
   charsOmitted?: number
+  /** What the loop did to reach this answer, in order; absent when it answered without a tool. */
+  steps?: AgentStep[]
 }
 
 // What the loop is doing, emitted before each tool call; also keeps the port busy for the MV3 worker.
@@ -54,7 +56,7 @@ export type AgentStep =
   | { kind: 'searching'; domain: string; query: string }
   | { kind: 'reading'; url: string }
   | { kind: 'scanning'; query: string }
-  | { kind: 'citing' }
+  | { kind: 'citing'; found?: number; total?: number }
 
 export type UnreadableReason =
   | 'restricted-url'

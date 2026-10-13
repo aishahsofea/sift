@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeStep } from './stepLabel'
+import { describeStep, describeStepDone } from './stepLabel'
 
 describe('describeStep', () => {
   it('shows the domain and the query the model wrote', () => {
@@ -28,5 +28,25 @@ describe('describeStep', () => {
 
   it('says the quotes are being checked against the page', () => {
     expect(describeStep({ kind: 'citing' })).toBe('Checking quotes against the page…')
+  })
+})
+
+describe('describeStepDone', () => {
+  it('drops the ellipsis of the live label', () => {
+    expect(describeStepDone({ kind: 'reading', url: 'https://example.com/pricing' })).toBe('Reading example.com/pricing')
+    expect(describeStepDone({ kind: 'scanning', query: 'methods' })).toBe('Searching this page for “methods”')
+  })
+
+  it('says how many quotes the check found', () => {
+    expect(describeStepDone({ kind: 'citing', found: 3, total: 3 })).toBe('Checking quotes against the page: 3 of 3 found')
+    expect(describeStepDone({ kind: 'citing', found: 0, total: 2 })).toBe('Checking quotes against the page: 0 of 2 found')
+  })
+
+  it('leaves the count off a check that has no result', () => {
+    expect(describeStepDone({ kind: 'citing' })).toBe('Checking quotes against the page')
+  })
+
+  it('keeps the live label free of the count', () => {
+    expect(describeStep({ kind: 'citing', found: 3, total: 3 })).toBe('Checking quotes against the page…')
   })
 })
