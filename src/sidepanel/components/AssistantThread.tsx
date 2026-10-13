@@ -15,6 +15,8 @@ import type { BackgroundRequest } from '../../shared/messages'
 import type { AgentStep, AnswerSource, TurnStats, WebPages } from '../../shared/types'
 
 const TabIdContext = createContext<number | null>(null)
+// A shared snapshot can't be edited or regenerated.
+const ReadOnlyContext = createContext(false)
 
 export function Icon({ children }: { children: ReactNode }) {
   return (
@@ -74,6 +76,7 @@ function Message() {
   // assistant-ui adds an empty running message on send; the pending indicator covers it, so skip it.
   const isEmpty = useAuiState((s) => s.message.role === 'assistant' && s.message.parts.every((p) => p.type !== 'text' || !p.text))
   const isLast = useAuiState((s) => s.message.isLast)
+  const readOnly = useContext(ReadOnlyContext)
   const isEditing = useAuiState((s) => s.message.composer.isEditing)
   if (isEmpty) return null
 
@@ -122,7 +125,7 @@ function Message() {
           {describeStats(custom.stats)}
         </p>
       )}
-      {role === 'user' && (
+      {role === 'user' && !readOnly && (
         <ActionBarPrimitive.Root className="message-actions" hideWhenRunning>
           <ActionBarPrimitive.Edit className="message-action message-action-icon" aria-label="Edit message" data-tooltip="Edit message">
             <Icon>
@@ -147,7 +150,7 @@ function Message() {
               </Icon>
             </span>
           </ActionBarPrimitive.Copy>
-          {isLast && (
+          {isLast && !readOnly && (
             <ActionBarPrimitive.Reload className="message-action message-action-icon" aria-label="Regenerate answer" data-tooltip="Regenerate answer">
               <Icon>
                 <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
@@ -168,15 +171,17 @@ function Message() {
   )
 }
 
-export function AssistantThread({ pending, tabId }: { pending: Pending | null; tabId: number | null }) {
+export function AssistantThread({ pending, tabId, readOnly = false }: { pending: Pending | null; tabId: number | null; readOnly?: boolean }) {
   return (
     <TabIdContext.Provider value={tabId}>
-      <ThreadPrimitive.Root className="assistant-thread">
-        <ThreadPrimitive.Viewport className="chat-thread">
-          <ThreadPrimitive.Messages components={{ Message }} />
-          {pending && <PendingIndicator label={pending.label} done={pending.done} />}
-        </ThreadPrimitive.Viewport>
-      </ThreadPrimitive.Root>
+      <ReadOnlyContext.Provider value={readOnly}>
+        <ThreadPrimitive.Root className="assistant-thread">
+          <ThreadPrimitive.Viewport className="chat-thread">
+            <ThreadPrimitive.Messages components={{ Message }} />
+            {pending && <PendingIndicator label={pending.label} done={pending.done} />}
+          </ThreadPrimitive.Viewport>
+        </ThreadPrimitive.Root>
+      </ReadOnlyContext.Provider>
     </TabIdContext.Provider>
   )
 }

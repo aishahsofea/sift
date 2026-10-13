@@ -1,6 +1,6 @@
 import { MAX_HISTORY_TURNS } from '../../shared/constants'
 import { pendingSelectionKey, shareSnapshotKey } from '../../shared/storageKeys'
-import type { SharedPair } from '../../shared/shareSnapshot'
+import type { ShareSnapshot } from '../../shared/shareSnapshot'
 import type { ChatTurn, ExtractedPage } from '../../shared/types'
 
 function pageStorageKey(tabId: number): string {
@@ -48,11 +48,6 @@ export async function getFullPageContent(tabId: number): Promise<string | undefi
 
 export async function setPendingSelection(tabId: number, selection: string): Promise<void> {
   await chrome.storage.session.set({ [pendingSelectionKey(tabId)]: selection })
-}
-
-export interface ShareSnapshot {
-  pageUrl: string
-  pairs: SharedPair[]
 }
 
 export async function setShareSnapshot(tabId: number, snapshot: ShareSnapshot): Promise<void> {

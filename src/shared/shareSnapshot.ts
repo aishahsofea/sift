@@ -8,6 +8,11 @@ export interface SharedPair {
   quotes?: string[]
 }
 
+export interface ShareSnapshot {
+  pageUrl: string
+  pairs: SharedPair[]
+}
+
 export interface ShareLink {
   /** Null when not even the last pair fits under the cap. */
   link: string | null
@@ -86,4 +91,12 @@ export async function buildShareLink(turns: ChatTurn[], landingUrl: string, page
     }
   }
   return { link: null, sharedPairs: 0, droppedPairs: pairs.length }
+}
+
+// `url` is set so the panel's quote buttons can find the page the quotes came from.
+export function pairsToTurns({ pageUrl, pairs }: ShareSnapshot): ChatTurn[] {
+  return pairs.flatMap(({ question, answer, source, quotes }): ChatTurn[] => [
+    { role: 'user', content: question },
+    { role: 'assistant', content: answer, ...(source && { source }), ...(quotes && { quotes, url: pageUrl }) },
+  ])
 }

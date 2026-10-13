@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SHARE_FRAGMENT_CHAR_LIMIT } from './constants'
-import { buildShareLink, decodeSnapshot, pairTurns } from './shareSnapshot'
+import { buildShareLink, decodeSnapshot, pairsToTurns, pairTurns } from './shareSnapshot'
 import type { ChatTurn } from './types'
 
 const LANDING = 'https://example.github.io/sift/'
@@ -101,5 +101,17 @@ describe('decodeSnapshot', () => {
     ).arrayBuffer()
     const d = btoa(String.fromCharCode(...new Uint8Array(bytes))).replaceAll('+', '-').replaceAll('/', '_')
     expect((await decodeSnapshot(`#u=x&d=${d}`)).ok).toBe(false)
+  })
+})
+
+describe('pairsToTurns', () => {
+  it('rebuilds the thread, tagging quoted answers with the page they came from', () => {
+    const pairs = [{ question: 'q', answer: 'a', source: 'page' as const, quotes: ['x y'] }, { question: 'q2', answer: 'a2' }]
+    expect(pairsToTurns({ pageUrl: PAGE, pairs })).toEqual([
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: 'a', source: 'page', quotes: ['x y'], url: PAGE },
+      { role: 'user', content: 'q2' },
+      { role: 'assistant', content: 'a2' },
+    ])
   })
 })

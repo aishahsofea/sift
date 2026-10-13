@@ -7,11 +7,31 @@ import { MissingApiKeysState } from './components/MissingApiKeysState'
 import { TooltipLayer } from './components/TooltipLayer'
 import { TruncationNotice } from './components/TruncationNotice'
 import { UnreadablePageState } from './components/UnreadablePageState'
-import { useActiveTab } from './hooks/useActiveTab'
+import { SharedThread } from './components/SharedThread'
+import { ownTabId, useActiveTab } from './hooks/useActiveTab'
 import { useChat } from './hooks/useChat'
+import { useSharedSnapshot } from './hooks/useSharedSnapshot'
 import { buildConversationMarkdown, conversationFilename } from './conversationMarkdown'
 
 export default function App() {
+  const [tabId] = useState(ownTabId)
+  const { shared, dismiss } = useSharedSnapshot(tabId)
+  if (shared.state === 'loading') return null
+  if (shared.state === 'shared') {
+    return (
+      <main>
+        <TooltipLayer />
+        <header className="app-header">
+          <h1>Sift</h1>
+        </header>
+        <SharedThread snapshot={shared.snapshot} tabId={tabId} onDismiss={dismiss} />
+      </main>
+    )
+  }
+  return <ChatApp />
+}
+
+function ChatApp() {
   const { tabId, status } = useActiveTab()
   const { turns, asking, pending, error, ask, reload, stop, clear, historyLoaded } = useChat(tabId)
   const [nebiusConfigured, setNebiusConfigured] = useState<boolean | null>(null)
