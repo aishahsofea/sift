@@ -18,6 +18,9 @@ export const MAX_TOOL_ROUNDS = 3
 // Shorter quotes verify trivially against any page (ADR 0005); 10 lets "Dana Reyes" through.
 export const MIN_QUOTE_CHARS = 10
 
+// Most web pages stored per list on a turn (#81); search_site returns 5, so this only bounds repeated searches.
+export const MAX_WEB_PAGES = 10
+
 // Caps what one fetch_page round adds to a context that may already hold TRUNCATION_CHAR_LIMIT chars.
 export const FETCHED_PAGE_CHAR_LIMIT = 20_000
 

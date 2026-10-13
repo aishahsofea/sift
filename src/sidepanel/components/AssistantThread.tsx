@@ -8,10 +8,11 @@ import { usePendingSelection } from '../hooks/usePendingSelection'
 import type { Pending } from '../hooks/useChat'
 import { PendingIndicator } from './PendingIndicator'
 import { StepList } from './StepList'
+import { WebPageList } from './WebPageList'
 import { describeStats, explainStats } from '../statsLabel'
 import { Table } from './MessageBubble'
 import type { BackgroundRequest } from '../../shared/messages'
-import type { AgentStep, AnswerSource, TurnStats } from '../../shared/types'
+import type { AgentStep, AnswerSource, TurnStats, WebPages } from '../../shared/types'
 
 const TabIdContext = createContext<number | null>(null)
 
@@ -67,6 +68,7 @@ function Message() {
     charsOmitted?: number
     steps?: AgentStep[]
     stats?: TurnStats
+    webPages?: WebPages
   }
 
   // assistant-ui adds an empty running message on send; the pending indicator covers it, so skip it.
@@ -110,6 +112,7 @@ function Message() {
       {custom.quotes && custom.quotes.length > 0 && <QuoteList quotes={custom.quotes} url={custom.url} />}
       {custom.quote && <blockquote className="message-quote">{custom.quote.text}</blockquote>}
       {custom.steps && custom.steps.length > 0 && <StepList steps={custom.steps} />}
+      {custom.webPages && <WebPageList pages={custom.webPages} />}
       <MessagePrimitive.Parts components={{ Text: ({ text }) => <MarkdownText text={text} /> }} />
       {custom.truncated && custom.charsOmitted !== undefined && (
         <p className="message-bubble-truncated">{describeTruncatedAnswer(custom.charsOmitted)}</p>
