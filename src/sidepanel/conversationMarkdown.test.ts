@@ -58,6 +58,12 @@ describe('buildConversationMarkdown', () => {
     expect(buildConversationMarkdown(page, [{ role: 'assistant', content: 'Hi' }])).not.toContain('Steps')
   })
 
+  it('puts an italic stats line after the answer, and none on an old turn without stats', () => {
+    const withStats = buildConversationMarkdown(page, [{ role: 'assistant', content: 'Hi', stats: { durationMs: 4200, toolRounds: 1 } }])
+    expect(withStats).toContain('Hi\n\n*4.2s · 1 tool round*')
+    expect(buildConversationMarkdown(page, [{ role: 'assistant', content: 'Hi' }])).not.toMatch(/\*\d/)
+  })
+
   it('notes an answer written from a cut-short page', () => {
     const md = buildConversationMarkdown(page, [
       { role: 'assistant', content: 'x', source: 'unverified', truncated: true, charsOmitted: 5000 },

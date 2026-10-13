@@ -49,6 +49,18 @@ export interface ChatTurn {
   charsOmitted?: number
   /** What the loop did to reach this answer, in order; absent when it answered without a tool. */
   steps?: AgentStep[]
+  /** What producing this answer cost; absent on turns saved before it was recorded. */
+  stats?: TurnStats
+}
+
+// Totals across every round of one turn, discarded and forced rounds included.
+export interface TurnStats {
+  model?: string
+  durationMs: number
+  promptTokens?: number
+  cachedTokens?: number
+  /** Rounds in which the model called tools. */
+  toolRounds: number
 }
 
 // What the loop is doing, emitted before each tool call; also keeps the port busy for the MV3 worker.

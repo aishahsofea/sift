@@ -154,6 +154,15 @@ answer logs one line to the service worker console saying why it got its
 label. Details are in
 [ADR 0005](docs/adr/0005-grounding-is-verified-not-assumed.md).
 
+### Answer stats
+
+A quiet line under each answer shows the model, the time it took, the prompt
+tokens (with how many were cached) and the tool rounds. Time runs from the
+question to the finished answer. Tokens add up every model call, including
+answers that were thrown away. Parts Nebius didn't report are left out, and
+answers saved before this line existed don't have one. Hover the line for the
+full model ID.
+
 ### Checking a quote
 
 Under the label, a collapsed **N quotes** list shows what the answer was checked

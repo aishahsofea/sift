@@ -361,6 +361,13 @@ main {
   opacity: 0.65;
 }
 
+.message-bubble-stats {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  opacity: 0.65;
+  overflow-wrap: anywhere;
+}
+
 .truncation-notice {
   padding: 0.5rem 1rem;
   border-bottom: 1px solid #fde68a;

@@ -8,9 +8,10 @@ import { usePendingSelection } from '../hooks/usePendingSelection'
 import type { Pending } from '../hooks/useChat'
 import { PendingIndicator } from './PendingIndicator'
 import { StepList } from './StepList'
+import { describeStats, explainStats } from '../statsLabel'
 import { Table } from './MessageBubble'
 import type { BackgroundRequest } from '../../shared/messages'
-import type { AgentStep, AnswerSource } from '../../shared/types'
+import type { AgentStep, AnswerSource, TurnStats } from '../../shared/types'
 
 const TabIdContext = createContext<number | null>(null)
 
@@ -65,6 +66,7 @@ function Message() {
     truncated?: boolean
     charsOmitted?: number
     steps?: AgentStep[]
+    stats?: TurnStats
   }
 
   // assistant-ui adds an empty running message on send; the pending indicator covers it, so skip it.
@@ -111,6 +113,11 @@ function Message() {
       <MessagePrimitive.Parts components={{ Text: ({ text }) => <MarkdownText text={text} /> }} />
       {custom.truncated && custom.charsOmitted !== undefined && (
         <p className="message-bubble-truncated">{describeTruncatedAnswer(custom.charsOmitted)}</p>
+      )}
+      {custom.stats && (
+        <p className="message-bubble-stats" data-tooltip={explainStats(custom.stats)}>
+          {describeStats(custom.stats)}
+        </p>
       )}
       {role === 'user' && (
         <ActionBarPrimitive.Root className="message-actions" hideWhenRunning>

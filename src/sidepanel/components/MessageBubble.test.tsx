@@ -26,6 +26,16 @@ describe('MessageBubble', () => {
     expect(html).toContain('message-bubble-table-wrap')
   })
 
+  it('shows the stats line under an answer that has stats', () => {
+    const html = render({ role: 'assistant', content: 'Hi', stats: { model: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B', durationMs: 4200, toolRounds: 0 } })
+
+    expect(html).toContain('Nemotron 3 Nano · 4.2s')
+  })
+
+  it('has no stats line for an older answer without stats', () => {
+    expect(render({ role: 'assistant', content: 'Hi' })).not.toContain('message-bubble-stats')
+  })
+
   it('renders GFM strikethrough', () => {
     const html = render({ role: 'assistant', content: '~~old price~~ new price' })
 
