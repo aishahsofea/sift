@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { pendingSelectionKey } from '../../shared/storageKeys'
+import { pendingSelectionKey, shareSnapshotKey } from '../../shared/storageKeys'
 import type { ExtractedPage } from '../../shared/types'
 import {
   appendHistoryTurns,
@@ -8,8 +8,10 @@ import {
   getExtractedPage,
   getFullPageContent,
   getHistory,
+  getShareSnapshot,
   setExtractedPage,
   setPendingSelection,
+  setShareSnapshot,
 } from './sessionHistory'
 
 // A stand-in for chrome.storage.session: a map that, like the real one, refuses a write
@@ -140,18 +142,28 @@ describe('clearTabData', () => {
     await setExtractedPage(1, head, fullText)
     await appendHistoryTurns(1, [{ role: 'user', content: 'q' }])
     await setPendingSelection(1, 'quoted')
+    await setShareSnapshot(1, { pageUrl: 'https://a.com', pairs: [] })
     await setExtractedPage(2, head, fullText)
     await appendHistoryTurns(2, [{ role: 'user', content: 'q' }])
 
     await clearTabData(1)
 
     expect(store.has(pendingSelectionKey(1))).toBe(false)
+    expect(store.has(shareSnapshotKey(1))).toBe(false)
     expect(await getExtractedPage(1)).toBeUndefined()
     expect(await getFullPageContent(1)).toBeUndefined()
     expect(await getHistory(1)).toEqual([])
     expect(await getExtractedPage(2)).toBeDefined()
     expect(await getFullPageContent(2)).toBe(fullText)
     expect(await getHistory(2)).toHaveLength(1)
+  })
+})
+
+describe('share snapshot', () => {
+  it('is kept per tab', async () => {
+    await setShareSnapshot(1, { pageUrl: 'https://a.com', pairs: [{ question: 'q', answer: 'a' }] })
+    expect((await getShareSnapshot(1))?.pairs).toHaveLength(1)
+    expect(await getShareSnapshot(2)).toBeUndefined()
   })
 })
 

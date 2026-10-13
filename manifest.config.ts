@@ -1,5 +1,6 @@
 import { defineManifest } from '@crxjs/vite-plugin'
 import pkg from './package.json' with { type: 'json' }
+import { SHARE_LANDING_URL } from './src/shared/shareLanding'
 
 export default defineManifest({
   manifest_version: 3,
@@ -15,6 +16,8 @@ export default defineManifest({
   // this stays broad rather than risking a regression on a guess.
   permissions: ['sidePanel', 'storage', 'scripting', 'contextMenus'],
   host_permissions: ['http://*/*', 'https://*/*'],
+  // Declared, not injected, so the landing page can tell it's installed before anyone clicks (#87).
+  content_scripts: [{ matches: [`${SHARE_LANDING_URL}*`], js: ['src/content/landingMarker.ts'] }],
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   // No default_path (#14): declaring one makes Chrome fall back to a single global
   // panel shared by every tab even when the background script also configures a

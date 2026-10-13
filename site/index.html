@@ -17,6 +17,7 @@
       .a { margin: 0; white-space: pre-wrap; }
       blockquote { margin: .5rem 0 0; padding-left: .75rem; border-left: 3px solid var(--line); color: var(--muted); font-size: .9rem; }
       .error { border: 1px solid #dc2626; color: #dc2626; border-radius: .5rem; padding: .75rem 1rem; }
+      #open-with-sift { margin: 0 0 1rem; padding: .5rem 1rem; font: inherit; font-weight: 600; cursor: pointer; }
       [hidden] { display: none; }
     </style>
   </head>
@@ -28,6 +29,7 @@
       <a href="https://github.com/aishahsofea/sift/releases/latest">Install Sift</a>
       to open this thread on the original page.
     </div>
+    <button id="open-with-sift" hidden>Open with Sift</button>
     <p class="error" id="error" hidden></p>
     <div id="thread"></div>
     <script type="module" src="./landing.ts"></script>

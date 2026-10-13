@@ -51,7 +51,7 @@ async function encodePairs(pairs: SharedPair[]): Promise<string> {
   return toBase64Url(await pipe(json, new CompressionStream('deflate-raw')))
 }
 
-const isPair = (p: unknown): p is SharedPair =>
+export const isSharedPair = (p: unknown): p is SharedPair =>
   typeof p === 'object' &&
   p !== null &&
   typeof (p as SharedPair).question === 'string' &&
@@ -66,7 +66,7 @@ export async function decodeSnapshot(hash: string): Promise<DecodedSnapshot> {
     if (!pageUrl || !data) return { ok: false, error: 'The link is missing its page or its data.' }
     const bytes = await pipe(fromBase64Url(data) as Uint8Array<ArrayBuffer>, new DecompressionStream('deflate-raw'))
     const parsed = JSON.parse(new TextDecoder().decode(bytes))
-    if (parsed?.v !== FORMAT_VERSION || !Array.isArray(parsed.pairs) || !parsed.pairs.every(isPair)) {
+    if (parsed?.v !== FORMAT_VERSION || !Array.isArray(parsed.pairs) || !parsed.pairs.every(isSharedPair)) {
       return { ok: false, error: 'The link was made by a different version of Sift.' }
     }
     return { ok: true, pageUrl, pairs: parsed.pairs }

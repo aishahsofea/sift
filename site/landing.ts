@@ -29,6 +29,13 @@ function render(pageUrl: string, pairs: SharedPair[]) {
 }
 
 const decoded = await decodeSnapshot(location.hash)
+
+// Sift's content script sets this once it has run; the click itself is handled there.
+const showOpenButton = () =>
+  ($('open-with-sift').hidden = !decoded.ok || !document.documentElement.hasAttribute('data-sift-installed'))
+showOpenButton()
+new MutationObserver(showOpenButton).observe(document.documentElement, { attributes: true })
+
 if (decoded.ok) {
   render(decoded.pageUrl, decoded.pairs)
 } else {

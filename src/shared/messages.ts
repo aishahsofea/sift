@@ -1,3 +1,4 @@
+import type { SharedPair } from './shareSnapshot'
 import type { AgentStep, ChatTurn, ExtractedPage, UnreadableReason } from './types'
 
 export type BackgroundRequest =
@@ -6,6 +7,8 @@ export type BackgroundRequest =
   | { type: 'CLEAR_HISTORY'; tabId: number }
   | { type: 'GET_API_KEY_STATUS' }
   | { type: 'OPEN_QUOTE'; tabId: number; quote: string; url?: string }
+  // From the landing page's content script; the tab comes from the sender.
+  | { type: 'SHARE_OPEN'; pageUrl: string; pairs: SharedPair[] }
 
 export type BackgroundResponse =
   | { type: 'EXTRACT_PAGE_RESULT'; ok: true; page: ExtractedPage }
@@ -13,6 +16,7 @@ export type BackgroundResponse =
   | { type: 'HISTORY_RESULT'; turns: ChatTurn[] }
   | { type: 'CLEARED' }
   | { type: 'QUOTE_OPENED' }
+  | { type: 'SHARE_OPENED' }
   | { type: 'API_KEY_STATUS'; nebiusConfigured: boolean; tavilyConfigured: boolean }
 
 // content script -> background, correlated via sender.tab.id since a content script can't supply its tabId.
