@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Shared Sift thread</title>
+    <style>
+      :root { color-scheme: light dark; --muted: #6b7280; --line: #d1d5db; --accent: #2563eb; }
+      body { font: 16px/1.55 system-ui, sans-serif; max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+      h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+      .muted { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+      .install { border: 1px solid var(--line); border-radius: .5rem; padding: .75rem 1rem; margin: 1rem 0 1.5rem; }
+      .install a { color: var(--accent); font-weight: 600; }
+      .pair { border-top: 1px solid var(--line); padding: 1rem 0; }
+      .q { font-weight: 600; margin: 0 0 .5rem; white-space: pre-wrap; }
+      .a { margin: 0; white-space: pre-wrap; }
+      blockquote { margin: .5rem 0 0; padding-left: .75rem; border-left: 3px solid var(--line); color: var(--muted); font-size: .9rem; }
+      .error { border: 1px solid #dc2626; color: #dc2626; border-radius: .5rem; padding: .75rem 1rem; }
+      [hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Shared Sift thread</h1>
+    <p class="muted" id="page" hidden></p>
+    <div class="install">
+      Sift answers questions about the page you're reading.
+      <a href="https://github.com/aishahsofea/sift/releases/latest">Install Sift</a>
+      to open this thread on the original page.
+    </div>
+    <p class="error" id="error" hidden></p>
+    <div id="thread"></div>
+    <script type="module" src="./landing.ts"></script>
+  </body>
+</html>

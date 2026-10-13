@@ -223,6 +223,7 @@ changes hot-reload).
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run — unit tests for pure logic only
+npm run build:site  # site/ — the shared-thread landing page, built into site-dist/ (deployed by .github/workflows/pages.yml)
 npm run test:nebius # scripts/test-nebius.mjs — standalone Nebius API smoke test, reads .env
 npm run test:tools  # scripts/test-nebius-tools.mjs — live tool-calling spike for the agent loop, reads .env
                     # (--no-cite runs it without cite_page, the baseline for that round's cost;
