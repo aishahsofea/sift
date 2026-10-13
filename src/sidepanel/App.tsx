@@ -11,6 +11,9 @@ import { SharedThread } from './components/SharedThread'
 import { ownTabId, useActiveTab } from './hooks/useActiveTab'
 import { useChat } from './hooks/useChat'
 import { useSharedSnapshot } from './hooks/useSharedSnapshot'
+import { ShareDialog } from './components/ShareDialog'
+import { buildShareLink, type ShareLink } from '../shared/shareSnapshot'
+import { SHARE_LANDING_URL } from '../shared/shareLanding'
 import { buildConversationMarkdown, conversationFilename } from './conversationMarkdown'
 
 export default function App() {
@@ -44,6 +47,8 @@ function ChatApp() {
   }, [])
 
   const [copied, setCopied] = useState(false)
+  // Null: closed. `building` is the dialog open before the link is ready.
+  const [share, setShare] = useState<{ result: ShareLink | null; copied?: boolean } | null>(null)
 
   const chatReady = status.state === 'ready' && nebiusConfigured === true
 
@@ -54,6 +59,19 @@ function ChatApp() {
     await navigator.clipboard.writeText(conversation())
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  const openShare = async () => {
+    if (status.state !== 'ready') return
+    setShare({ result: null })
+    const result = await buildShareLink(turns, SHARE_LANDING_URL, status.page.url)
+    setShare((current) => (current ? { result } : current))
+  }
+
+  const copyShareLink = async () => {
+    if (!share?.result?.link) return
+    await navigator.clipboard.writeText(share.result.link)
+    setShare({ result: share.result, copied: true })
   }
 
   const downloadConversation = () => {
@@ -92,6 +110,14 @@ function ChatApp() {
                 <path d="M12 15V3" />
               </Icon>
             </button>
+            <button onClick={openShare} className="header-action" aria-label="Share thread" data-tooltip="Share thread as a link">
+              <Icon>
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+              </Icon>
+            </button>
             <span className="header-divider" aria-hidden="true" />
             <button onClick={clear} className="header-action header-action-danger" aria-label="Clear conversation" data-tooltip="Clear conversation">
               <Icon>
@@ -103,6 +129,8 @@ function ChatApp() {
           </div>
         )}
       </header>
+
+      {share && <ShareDialog result={share.result} copied={share.copied} onCopy={copyShareLink} onCancel={() => setShare(null)} />}
 
       {status.state === 'loading' && <p>Reading page…</p>}
       {status.state === 'unreadable' && <UnreadablePageState reason={status.reason} message={status.message} />}
