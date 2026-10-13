@@ -122,6 +122,31 @@ beforeEach(() => {
   vi.mocked(appendTrace).mockResolvedValue(undefined)
 })
 
+describe('answer stats', () => {
+  const usage = (promptTokens: number, cachedTokens: number): AgentTurn['usage'] => ({ promptTokens, cachedTokens })
+
+  it('are on the stored and posted turn of a direct answer', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel({ ...answer('1,200.'), model: 'test-model', usage: usage(900, 400) })
+
+    const { turn } = await ask()
+
+    expect(turn.stats).toEqual({ model: 'test-model', durationMs: expect.any(Number), promptTokens: 900, cachedTokens: 400, toolRounds: 0 })
+    expect(vi.mocked(appendHistoryTurns).mock.calls[0][1][1]).toBe(turn)
+  })
+
+  it('total the rounds of a tool-round answer', async () => {
+    scriptModel(
+      { ...cite(QUOTE), model: 'test-model', usage: usage(1000, 0) },
+      { ...answer('1,200.'), model: 'test-model', usage: usage(1200, 1000) },
+    )
+
+    const { turn } = await ask()
+
+    expect(turn.stats).toMatchObject({ promptTokens: 2200, cachedTokens: 1000, toolRounds: 1 })
+  })
+})
+
 describe('a quoted selection', () => {
   const selection = 'beta testers who filed over 3,000 bug reports'
 

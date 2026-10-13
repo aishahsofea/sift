@@ -46,7 +46,7 @@ import {
   type TraceRecorder,
 } from './traceRecorder'
 import { collapseWhitespace, verifyQuotes } from './verifyQuotes'
-
+import { summarizeTurn } from './turnStats'
 // State the loop carries across rounds, scoped to this one question.
 interface LoopState {
   /** URLs a search_site call returned this turn — the only URLs fetch_page accepts. */
@@ -108,6 +108,7 @@ export async function runAgentLoop(
   rewind = 0,
   selection?: string,
 ): Promise<void> {
+  const startedAt = Date.now()
   // Panel closed or Stop dropped the port: abort in-flight work and run no more paid rounds.
   let panelGone = false
   const abort = new AbortController()
@@ -246,7 +247,7 @@ export async function runAgentLoop(
           post(port, { type: 'ASK_STEP', step: { kind: 'citing' } })
           continue
         }
-        await finish(context, tabId, question, quoted, content)
+        await finish(context, tabId, question, quoted, content, startedAt)
         return
       }
 
@@ -312,6 +313,7 @@ async function finish(
   question: string,
   selection: string | undefined,
   content: string,
+  startedAt: number,
 ): Promise<void> {
   const { port, page, state, recorder } = context
   const answer = stripCitationMarkers(content).trimEnd()
@@ -340,6 +342,7 @@ async function finish(
     ...(quotes.length ? { quotes, url: page.url } : {}),
     ...(state.steps.length ? { steps: state.steps } : {}),
     ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
+    stats: summarizeTurn(recorder.rounds, Date.now() - startedAt),
   }
 
   await appendHistoryTurns(tabId, [{ role: 'user', content: question, ...(selection ? { selection } : {}) }, turn])

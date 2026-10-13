@@ -2,6 +2,7 @@ import ReactMarkdown, { type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { JSX } from 'react'
 import type { ChatTurn } from '../../shared/types'
+import { describeStats, explainStats } from '../statsLabel'
 import { describeSource, explainSource } from '../sourceLabel'
 import { describeTruncatedAnswer } from '../truncationLabel'
 
@@ -32,6 +33,11 @@ export function MessageBubble({ turn }: { turn: ChatTurn }) {
       </div>
       {turn.truncated && turn.charsOmitted !== undefined && (
         <p className="message-bubble-truncated">{describeTruncatedAnswer(turn.charsOmitted)}</p>
+      )}
+      {turn.stats && (
+        <p className="message-bubble-stats" data-tooltip={explainStats(turn.stats)}>
+          {describeStats(turn.stats)}
+        </p>
       )}
     </div>
   )
