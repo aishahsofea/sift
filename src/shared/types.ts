@@ -51,6 +51,22 @@ export interface ChatTurn {
   steps?: AgentStep[]
   /** What producing this answer cost; absent on turns saved before it was recorded. */
   stats?: TurnStats
+  /** Web pages the answer drew on; absent unless a web tool returned something (#81). */
+  webPages?: WebPages
+}
+
+export interface WebPage {
+  title: string
+  url: string
+  /** Only the start of the page was read: it came back cut and search_page didn't reach the rest. */
+  partial?: boolean
+}
+
+export interface WebPages {
+  /** Pages fetched and read. */
+  read: WebPage[]
+  /** Pages a search returned that weren't fetched. */
+  found: WebPage[]
 }
 
 // Totals across every round of one turn, discarded and forced rounds included.

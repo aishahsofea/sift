@@ -1,4 +1,4 @@
-import type { ChatTurn } from '../shared/types'
+import type { ChatTurn, WebPage } from '../shared/types'
 import { describeStepDone } from './stepLabel'
 import { describeSource } from './sourceLabel'
 import { describeStats } from './statsLabel'
@@ -8,6 +8,8 @@ interface PageInfo {
   title: string
   url: string
 }
+
+const webLine = ({ title, url, partial }: WebPage) => `- [${title.replace(/[[\]]/g, '\\$&')}](${url})${partial ? ' (partly read)' : ''}`
 
 function quoteBlock(text: string): string {
   return text
@@ -31,6 +33,8 @@ export function buildConversationMarkdown(page: PageInfo, turns: readonly ChatTu
     if (turn.truncated && turn.charsOmitted !== undefined) lines.push(`*${describeTruncatedAnswer(turn.charsOmitted)}*`)
     if (turn.stats) lines.push(`*${describeStats(turn.stats)}*`)
     if (turn.quotes?.length) lines.push(`**Quoted from the page:**\n\n${turn.quotes.map(quoteBlock).join('\n\n')}`)
+    if (turn.webPages?.read.length) lines.push(`**Web pages read:**\n\n${turn.webPages.read.map(webLine).join('\n')}`)
+    if (turn.webPages?.found.length) lines.push(`**Also found:**\n\n${turn.webPages.found.map(webLine).join('\n')}`)
     if (turn.steps?.length) lines.push(`**Steps:**\n\n${turn.steps.map((step, i) => `${i + 1}. ${describeStepDone(step)}`).join('\n')}`)
     parts.push(lines.join('\n\n'))
   }

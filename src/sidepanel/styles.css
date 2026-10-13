@@ -325,6 +325,53 @@ main {
   opacity: 0.8;
 }
 
+.message-web {
+  margin-bottom: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.message-web summary {
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.message-web h4 {
+  margin: 0.35rem 0 0.1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  opacity: 0.65;
+}
+
+.message-web ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  opacity: 0.85;
+}
+
+.message-web a {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.message-web-path {
+  display: block;
+  opacity: 0.65;
+  overflow-wrap: anywhere;
+}
+
+.message-web-partial {
+  display: inline-block;
+  margin-top: 0.1rem;
+  padding: 0 0.3rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  opacity: 0.7;
+}
+
+.message-web-more summary {
+  margin-left: 1.2rem;
+}
+
 .message-quotes summary {
   cursor: pointer;
   opacity: 0.65;

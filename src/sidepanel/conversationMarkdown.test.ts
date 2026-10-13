@@ -37,6 +37,21 @@ describe('buildConversationMarkdown', () => {
     expect(md).not.toContain('Quoted')
   })
 
+  it('lists the web pages read and found as links', () => {
+    const md = buildConversationMarkdown(page, [
+      {
+        role: 'assistant',
+        content: 'Pro is $17.50.',
+        webPages: {
+          read: [{ title: 'Pricing [new]', url: 'https://example.com/pricing', partial: true }],
+          found: [{ title: 'FAQ', url: 'https://example.com/faq' }],
+        },
+      },
+    ])
+    expect(md).toContain('**Web pages read:**\n\n- [Pricing \\[new\\]](https://example.com/pricing) (partly read)')
+    expect(md).toContain('**Also found:**\n\n- [FAQ](https://example.com/faq)')
+  })
+
   it('lists the steps the agent took as a numbered list', () => {
     const md = buildConversationMarkdown(page, [
       {

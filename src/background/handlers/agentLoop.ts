@@ -47,6 +47,7 @@ import {
 } from './traceRecorder'
 import { collapseWhitespace, verifyQuotes } from './verifyQuotes'
 import { summarizeTurn } from './turnStats'
+import { buildWebPages, type FetchedPage } from './webPages'
 // State the loop carries across rounds, scoped to this one question.
 interface LoopState {
   /** URLs a search_site call returned this turn — the only URLs fetch_page accepts. */
@@ -73,6 +74,12 @@ interface LoopState {
    * the most recent thing the model asked to read.
    */
   fetchedFullContent: string | undefined
+  /** Title of every URL search_site returned this turn, for the panel's list of web pages (#81). */
+  searchResults: Map<string, string>
+  /** Pages fetch_page read; `partial` until a search_page call reaches the rest of a cut one. */
+  fetchedPages: FetchedPage[]
+  /** The fetched page `fetchedFullContent` holds, i.e. the one search_page searches. */
+  searchedFetch: FetchedPage | undefined
   /** What the loop did, in order, kept on the answer so the panel can show how it got there. */
   steps: AgentStep[]
   /** What went wrong with tool calls (rejected quotes, malformed calls). Only feeds the log line. */
@@ -164,6 +171,9 @@ export async function runAgentLoop(
       pagePassages: 0,
       passageTexts: [],
       fetchedFullContent: undefined,
+      searchResults: new Map(),
+      fetchedPages: [],
+      searchedFetch: undefined,
       steps: [],
       problems: [],
     }
@@ -334,6 +344,8 @@ async function finish(
     quotedSearchResult: quotesFromSearch(state) > 0,
   })
 
+  const webPages = source === 'web' || source === 'page+web' ? buildWebPages(state.searchResults, state.fetchedPages) : undefined
+
   // Persisted and posted as one object so the panel matches a reload; the cut is flagged only if it limits.
   const turn: ChatTurn = {
     role: 'assistant',
@@ -342,6 +354,7 @@ async function finish(
     ...(quotes.length ? { quotes, url: page.url } : {}),
     ...(state.steps.length ? { steps: state.steps } : {}),
     ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
+    ...(webPages && (webPages.read.length || webPages.found.length) ? { webPages } : {}),
     stats: summarizeTurn(recorder.rounds, Date.now() - startedAt),
   }
 
@@ -442,7 +455,10 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
 
     const results = await withWebFallback(context, () => searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl, context.signal))
     if (!Array.isArray(results)) return results
-    for (const result of results) state.allowedUrls.add(result.url)
+    for (const result of results) {
+      state.allowedUrls.add(result.url)
+      state.searchResults.set(result.url, result.title)
+    }
     if (results.length) state.usedWeb = true
     return { results, ...(citeEnabled ? { note: SEARCH_NOTE } : {}) }
   }
@@ -463,6 +479,9 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
   // Cut like the tab page (FETCHED_PAGE_CHAR_LIMIT), keeping the rest for search_page (#7).
   const fetched = truncate(raw, FETCHED_PAGE_CHAR_LIMIT)
   if (fetched.truncated) state.fetchedFullContent = raw
+  const fetchedPage: FetchedPage = { url: call.args.url, partial: fetched.truncated }
+  state.fetchedPages.push(fetchedPage)
+  if (fetched.truncated) state.searchedFetch = fetchedPage
   // FETCH_NOTE_CUT shows regardless of citeEnabled: it's the only place the model learns the fetch was cut.
   const note = fetched.truncated ? FETCH_NOTE_CUT(fetched.charsOmitted) : citeEnabled ? FETCH_NOTE : undefined
   return { url: call.args.url, content: fetched.content, ...(note ? { note } : {}) }
@@ -493,6 +512,7 @@ function searchWholePage(context: ToolContext, query: string): unknown {
     })
     state.pageSearches++
     state.pagePassages += passages.length
+    if (state.searchedFetch) state.searchedFetch.partial = false
     return { passages, note: passages.length ? PAGE_SEARCH_NOTE_FETCHED : PAGE_SEARCH_EMPTY_NOTE_FETCHED }
   }
 

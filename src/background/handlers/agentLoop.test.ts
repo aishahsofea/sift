@@ -1513,3 +1513,97 @@ describe('a trace for every exit (#18)', () => {
     expect(traced()[0].question.text).toBeUndefined()
   })
 })
+
+// What the web tools returned is kept on the turn so the panel can list the pages (#81).
+describe('web pages on the turn (#81)', () => {
+  const results = [
+    { title: 'Pricing', url: 'https://loomkit.example/pricing', content: 'Pro: $17.50.' },
+    { title: 'Board pruning', url: 'https://loomkit.example/help/board-pruning', content: 'An overview.' },
+  ]
+  const cutContent = 'lorem ipsum dolor sit amet '.repeat(Math.ceil(FETCHED_PAGE_CHAR_LIMIT / 27) + 50) + 'threshold 0.42'
+  const fetchPricing = () => toolRound('fetch_page', { url: results[0].url })
+
+  beforeEach(() => {
+    vi.mocked(searchTavily).mockResolvedValue(results)
+  })
+
+  it('lists search results as found when nothing was fetched', async () => {
+    scriptModel(search('Loomkit Pro price'), answer('$17.50.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.webPages).toEqual({
+      read: [],
+      found: [
+        { title: 'Pricing', url: results[0].url },
+        { title: 'Board pruning', url: results[1].url },
+      ],
+    })
+  })
+
+  it('moves a fetched page to read', async () => {
+    vi.mocked(extractTavily).mockResolvedValue('Pro: $17.50 per user per month.')
+    scriptModel(search('Loomkit Pro price'), fetchPricing(), answer('$17.50.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.webPages).toEqual({
+      read: [{ title: 'Pricing', url: results[0].url }],
+      found: [{ title: 'Board pruning', url: results[1].url }],
+    })
+  })
+
+  it('does not count a failed or empty fetch as read', async () => {
+    vi.mocked(extractTavily).mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce('')
+    scriptModel(search('Loomkit Pro price'), fetchPricing(), fetchPricing(), answer('Could not read it.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.webPages?.read).toEqual([])
+    expect(turn.webPages?.found).toHaveLength(2)
+  })
+
+  it('does not count a URL the search never returned', async () => {
+    scriptModel(search('Loomkit Pro price'), toolRound('fetch_page', { url: 'https://evil.example/' }), answer('$17.50.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.webPages?.read).toEqual([])
+  })
+
+  it('is absent from a page-only answer', async () => {
+    scriptModel(cite(QUOTE), answer('1,200 testers.'))
+
+    const { turn } = await ask()
+
+    expect(turn).not.toHaveProperty('webPages')
+  })
+
+  it('is absent from an unverified answer, even after a search', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([])
+    scriptModel(search('Loomkit Pro price'), answer('Not sure.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.source).toBe('unverified')
+    expect(turn).not.toHaveProperty('webPages')
+  })
+
+  it('marks a cut fetch partial when search_page never searched it', async () => {
+    vi.mocked(extractTavily).mockResolvedValue(cutContent)
+    scriptModel(search('Loomkit Pro price'), fetchPricing(), answer('Probably $17.50.'))
+
+    const { turn } = await ask('How much is Pro?')
+
+    expect(turn.webPages?.read).toEqual([{ title: 'Pricing', url: results[0].url, partial: true }])
+  })
+
+  it('does not mark a cut fetch partial once search_page searched it', async () => {
+    vi.mocked(extractTavily).mockResolvedValue(cutContent)
+    scriptModel(search('Loomkit Pro price'), fetchPricing(), scan('threshold'), answer('The threshold is 0.42.'))
+
+    const { turn } = await ask('What is the threshold?')
+
+    expect(turn.webPages?.read).toEqual([{ title: 'Pricing', url: results[0].url }])
+  })
+})

@@ -18,6 +18,7 @@ function convertTurn(turn: ChatTurn, idx: number): ThreadMessageLike {
         charsOmitted: turn.charsOmitted,
         steps: turn.steps,
         stats: turn.stats,
+        webPages: turn.webPages,
         quote: turn.selection ? pageQuote(turn.selection) : undefined,
       },
     },
