@@ -43,3 +43,6 @@ export const DEMO_PROXY_URL: string = (import.meta.env.VITE_DEMO_PROXY_URL ?? ''
 
 // Idle timeout, reset on every chunk, not a cap on total duration; an untuned starting point (#28).
 export const NEBIUS_STREAM_IDLE_TIMEOUT_MS = 30_000
+
+// Longest share-link fragment (#87); chat apps and some servers truncate long URLs, so this stays well under their limits.
+export const SHARE_FRAGMENT_CHAR_LIMIT = 8_000
