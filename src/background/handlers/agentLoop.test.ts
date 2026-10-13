@@ -1223,6 +1223,85 @@ describe('a cut-short page whose rest was kept', () => {
   })
 })
 
+describe('the steps kept on the answer (#79)', () => {
+  it('has none when the model answered without a tool', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(truncatedPage)
+    scriptModel(answer('1,200.'))
+
+    const { turn } = await ask()
+
+    expect(turn).not.toHaveProperty('steps')
+  })
+
+  it('lists the tool rounds in order, with the quote check counting what it found', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([])
+    scriptModel(search('Loomkit Pro price'), cite(QUOTE, 'Not on the page at all'), cite(QUOTE), answer('1,200.'))
+
+    const { turn } = await ask()
+
+    expect(turn.steps).toEqual([
+      { kind: 'searching', domain: 'loomkit.example', query: 'Loomkit Pro price' },
+      { kind: 'citing', found: 1, total: 2 },
+      { kind: 'citing', found: 1, total: 1 },
+    ])
+  })
+
+  it('leaves out the retry step posted when an uncited answer is thrown away', async () => {
+    scriptModel(answer('About 500.'), cite(QUOTE), answer('1,200.'))
+
+    const { turn, posted } = await ask()
+
+    expect(posted.filter((m) => m.type === 'ASK_STEP')).toHaveLength(2)
+    expect(turn.steps).toEqual([{ kind: 'citing', found: 1, total: 1 }])
+  })
+
+  it('records a search of the rest of the page', async () => {
+    vi.mocked(getExtractedPage).mockResolvedValue(cutPage)
+    vi.mocked(getFullPageContent).mockResolvedValue(fullContent)
+    scriptModel(scan('jailbreak'), cite(TAIL_QUOTE), answer('It starts the answer first.'))
+
+    const { turn } = await ask('How does the jailbreak work?')
+
+    expect(turn.steps).toEqual([
+      { kind: 'scanning', query: 'jailbreak' },
+      { kind: 'citing', found: 1, total: 1 },
+    ])
+  })
+})
+
+describe('steps across a stop or a regenerate (#79)', () => {
+  it('stores nothing for a run the panel stopped, steps included', async () => {
+    let disconnect = () => {}
+    const port = {
+      postMessage: () => {},
+      onDisconnect: { addListener: (listener: () => void) => (disconnect = listener) },
+    } as unknown as chrome.runtime.Port
+    vi.mocked(searchTavily).mockImplementation(async () => {
+      disconnect()
+      throw new Error('aborted')
+    })
+    scriptModel(search('Loomkit Pro price'), answer('unreachable'))
+
+    await runAgentLoop(port, 1, 'How much is Pro?')
+
+    expect(appendHistoryTurns).not.toHaveBeenCalled()
+  })
+
+  it('gives a second run only its own steps', async () => {
+    vi.mocked(searchTavily).mockResolvedValue([])
+    scriptModel(search('first'), cite(QUOTE), answer('1,200.'), cite(QUOTE), answer('1,200.'))
+
+    const first = await ask()
+    const second = await ask()
+
+    expect(first.turn.steps).toEqual([
+      { kind: 'searching', domain: 'loomkit.example', query: 'first' },
+      { kind: 'citing', found: 1, total: 1 },
+    ])
+    expect(second.turn.steps).toEqual([{ kind: 'citing', found: 1, total: 1 }])
+  })
+})
+
 describe('a trace for every exit (#18)', () => {
   const traced = () => vi.mocked(appendTrace).mock.calls.map(([trace]) => trace)
 

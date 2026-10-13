@@ -21,4 +21,20 @@ describe('PendingIndicator', () => {
 
     expect(html).not.toContain('message-bubble-assistant')
   })
+
+  it('lists the steps already done above the one running', () => {
+    const html = renderToStaticMarkup(
+      <PendingIndicator label="Reading example.com/pricing…" done={['Searching example.com for “pricing”']} />,
+    )
+
+    expect(html).toContain('<li>Searching example.com for “pricing”</li>')
+    expect(html.indexOf('Searching example.com')).toBeLessThan(html.indexOf('Reading example.com/pricing…'))
+    expect(html).toContain('Reading example.com/pricing…')
+  })
+
+  it('has no list before a first step is done', () => {
+    const html = renderToStaticMarkup(<PendingIndicator label="Thinking…" />)
+
+    expect(html).not.toContain('<ol')
+  })
 })

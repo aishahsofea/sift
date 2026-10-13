@@ -1,4 +1,5 @@
 import type { ChatTurn } from '../shared/types'
+import { describeStepDone } from './stepLabel'
 import { describeSource } from './sourceLabel'
 import { describeTruncatedAnswer } from './truncationLabel'
 
@@ -28,6 +29,7 @@ export function buildConversationMarkdown(page: PageInfo, turns: readonly ChatTu
     lines.push(turn.content)
     if (turn.truncated && turn.charsOmitted !== undefined) lines.push(`*${describeTruncatedAnswer(turn.charsOmitted)}*`)
     if (turn.quotes?.length) lines.push(`**Quoted from the page:**\n\n${turn.quotes.map(quoteBlock).join('\n\n')}`)
+    if (turn.steps?.length) lines.push(`**Steps:**\n\n${turn.steps.map((step, i) => `${i + 1}. ${describeStepDone(step)}`).join('\n')}`)
     parts.push(lines.join('\n\n'))
   }
 

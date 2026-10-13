@@ -7,20 +7,20 @@ export type AskResult = { ok: true; turn: ChatTurn } | { ok: false; message: str
 export function useAskStream() {
   const [active, setActive] = useState(false)
   const [text, setText] = useState('')
-  const [step, setStep] = useState<AgentStep | null>(null)
+  const [steps, setSteps] = useState<AgentStep[]>([])
   const stopRef = useRef<(() => void) | null>(null)
 
   const start = useCallback((tabId: number, question: string, rewind?: number, selection?: string): Promise<AskResult> => {
     setActive(true)
     setText('')
-    setStep(null)
+    setSteps([])
 
     return new Promise((resolve) => {
       const port = chrome.runtime.connect({ name: ASK_PORT_NAME })
 
       const settle = (result: AskResult) => {
         setActive(false)
-        setStep(null)
+        setSteps([])
         port.disconnect()
         stopRef.current = null
         resolve(result)
@@ -33,7 +33,7 @@ export function useAskStream() {
           case 'ASK_STEP':
             // A step means this was a tool round, so text streamed before it wasn't the answer.
             setText('')
-            setStep(message.step)
+            setSteps((prev) => [...prev, message.step])
             break
           case 'ASK_CHUNK':
             setText((prev) => prev + message.delta)
@@ -54,5 +54,5 @@ export function useAskStream() {
 
   const stop = useCallback(() => stopRef.current?.(), [])
 
-  return { active, text, step, start, stop }
+  return { active, text, steps, start, stop }
 }

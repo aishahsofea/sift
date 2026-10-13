@@ -1,6 +1,6 @@
 import { FETCHED_PAGE_CHAR_LIMIT, MAX_TOOL_ROUNDS, PAGE_SEARCH_FETCH_PASSAGES } from '../../shared/constants'
 import type { AskPortMessage } from '../../shared/messages'
-import type { AgentTrace, AgentTraceToolCall, ChatTurn, ExtractedPage } from '../../shared/types'
+import type { AgentStep, AgentTrace, AgentTraceToolCall, ChatTurn, ExtractedPage } from '../../shared/types'
 import { capSelection, truncate } from '../../shared/truncate'
 import { appendHistoryTurns, dropLastHistoryTurns, getExtractedPage, getFullPageContent, getHistory } from '../history/sessionHistory'
 import { appendTrace } from '../history/agentTraces'
@@ -73,6 +73,8 @@ interface LoopState {
    * the most recent thing the model asked to read.
    */
   fetchedFullContent: string | undefined
+  /** What the loop did, in order, kept on the answer so the panel can show how it got there. */
+  steps: AgentStep[]
   /** What went wrong with tool calls (rejected quotes, malformed calls). Only feeds the log line. */
   problems: string[]
 }
@@ -161,6 +163,7 @@ export async function runAgentLoop(
       pagePassages: 0,
       passageTexts: [],
       fetchedFullContent: undefined,
+      steps: [],
       problems: [],
     }
     // Checked against the whole page, including what search_page found.
@@ -335,6 +338,7 @@ async function finish(
     content: answer,
     source,
     ...(quotes.length ? { quotes, url: page.url } : {}),
+    ...(state.steps.length ? { steps: state.steps } : {}),
     ...(page.truncated && state.pageSearches === 0 ? { truncated: true, charsOmitted: page.charsOmitted } : {}),
   }
 
@@ -408,7 +412,7 @@ function logTurn(trace: AgentTrace, state: LoopState): void {
 
 // Runs one tool call; failures return an error object so the model can correct itself.
 async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unknown> {
-  const { port, page, tavilyApiKey, tavilyBaseUrl, citeEnabled, state } = context
+  const { page, tavilyApiKey, tavilyBaseUrl, citeEnabled, state } = context
 
   if (!call.ok) {
     state.problems.push(call.error)
@@ -431,7 +435,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
 
   if (call.name === SEARCH_SITE) {
     const domain = scopeToDomain(page.url)
-    post(port, { type: 'ASK_STEP', step: { kind: 'searching', domain, query: call.args.query } })
+    announce(context, { kind: 'searching', domain, query: call.args.query })
 
     const results = await withWebFallback(context, () => searchTavily(tavilyApiKey, call.args.query, page.url, tavilyBaseUrl, context.signal))
     if (!Array.isArray(results)) return results
@@ -445,7 +449,7 @@ async function runTool(context: ToolContext, call: ParsedToolCall): Promise<unkn
     return { error: 'fetch_page only accepts URLs returned by search_site.' }
   }
 
-  post(port, { type: 'ASK_STEP', step: { kind: 'reading', url: call.args.url } })
+  announce(context, { kind: 'reading', url: call.args.url })
   const raw = await withWebFallback(context, () => extractTavily(tavilyApiKey, call.args.url, tavilyBaseUrl, context.signal))
   if (typeof raw === 'object' && raw !== null) return raw
   if (!raw) {
@@ -475,9 +479,10 @@ async function withWebFallback<T>({ signal, state }: ToolContext, call: () => Pr
 }
 
 // A cut fetch_page result beats the tab page (#7); fetched passages never feed cite_page (ADR 0005).
-function searchWholePage({ port, page, pageSearchEnabled, fullContent, state }: ToolContext, query: string): unknown {
+function searchWholePage(context: ToolContext, query: string): unknown {
+  const { page, pageSearchEnabled, fullContent, state } = context
   if (state.fetchedFullContent !== undefined) {
-    post(port, { type: 'ASK_STEP', step: { kind: 'scanning', query } })
+    announce(context, { kind: 'scanning', query })
     const passages = searchPage(state.fetchedFullContent, query, FETCHED_PAGE_CHAR_LIMIT, {
       // The head is already in the model's context, so every slot goes past the cut (#27).
       pastCutOnly: true,
@@ -493,7 +498,7 @@ function searchWholePage({ port, page, pageSearchEnabled, fullContent, state }: 
     return { error: 'search_page is not available.' }
   }
 
-  post(port, { type: 'ASK_STEP', step: { kind: 'scanning', query } })
+  announce(context, { kind: 'scanning', query })
 
   // The part past the prompt gets its own slots so a head full of the word can't fill the result.
   const passages = searchPage(fullContent, query, page.content.length)
@@ -518,6 +523,7 @@ function citePage({ port, citeEnabled, quotable, state, recorder }: ToolContext,
   post(port, { type: 'ASK_STEP', step: { kind: 'citing' } })
 
   const { verified, errors } = verifyQuotes(quotable, quotes)
+  state.steps.push({ kind: 'citing', found: verified.length, total: quotes.length })
   for (const quote of verified) state.verifiedQuotes.add(quote)
   state.problems.push(...errors)
   if (errors.length) recorder.citeRejections++
@@ -528,6 +534,12 @@ function citePage({ port, citeEnabled, quotable, state, recorder }: ToolContext,
   return errors.length
     ? { verified, error: errors.join('; '), note: CITE_PARTIAL_NOTE }
     : { verified, note: CITE_DONE_NOTE }
+}
+
+// Tells the panel and keeps the step for the answer.
+function announce({ port, state }: ToolContext, step: AgentStep): void {
+  state.steps.push(step)
+  post(port, { type: 'ASK_STEP', step })
 }
 
 function post(port: chrome.runtime.Port, message: AskPortMessage): void {
