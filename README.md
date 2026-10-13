@@ -242,6 +242,18 @@ works around.
 Architecture decisions made since that plan are recorded in
 [docs/adr/](docs/adr/).
 
+## Sharing a thread
+
+The **Share** button in the panel header copies a link that holds the thread
+(questions, answers, checked quotes and the page address) in the part of the URL
+after `#`, so no server ever sees it. The link opens a static page, built from
+[site/](site/) and hosted on GitHub Pages. With Sift installed, **Open with
+Sift** goes to the original page and shows the thread read-only in the panel.
+Without it, the page shows the thread as text and a link to install. A link has
+room for about 8,000 characters, so a long thread is shared as its most recent
+questions, and the dialog says how many. See
+[ADR 0013](docs/adr/0013-shareable-thread-links.md).
+
 ## Third-party services
 
 Sift calls these services. Use of each is under its provider's terms.

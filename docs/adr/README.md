@@ -26,3 +26,4 @@ ADR NNNN` — edit the status of the old record instead of deleting it.
 | [0010](0010-abort-a-stalled-nebius-stream-on-silence.md) | Abort a stalled Nebius stream on silence, not total duration | accepted |
 | [0011](0011-agent-loop-run-tracing.md) | Trace each agent-loop run, content off by default | proposed |
 | [0012](0012-nemotron-model-tiers.md) | Nano is the default; Ultra is opt-in | accepted |
+| [0013](0013-shareable-thread-links.md) | Threads are shared as links that carry the thread in the fragment | proposed |

@@ -15,6 +15,8 @@ prompt it can also search the rest of the page, locally
 ([ADR 0006](docs/adr/0006-long-pages-are-kept-and-searched-locally.md)), and
 the same for a fetched page that is itself too long
 ([ADR 0009](docs/adr/0009-fetch-page-escalates-and-reaches-past-its-cut.md)).
+A thread can be shared as a link whose fragment carries it, opened read-only in
+the panel ([ADR 0013](docs/adr/0013-shareable-thread-links.md)).
 
 Backend: [Nebius Token Factory](https://tokenfactory.nebius.com), an NVIDIA
 Nemotron model.
@@ -30,6 +32,7 @@ loop — the model decides when to search; see
 - `npm run build` — two Vite builds (extension shell, then content script)
   into `dist/`. They're separate because Chrome won't load ES modules in a
   content script; see PLAN.md.
+- `npm run build:site` — the landing page for shared threads, into `site-dist/`.
 - `npm run dev` — extension shell with HMR. `npm run dev:content` — content
   script watcher, needs its own terminal. Run both during development.
 - `npm run typecheck` — `tsc --noEmit`.
@@ -85,6 +88,10 @@ loop — the model decides when to search; see
   (`byline.ts`).
 - `src/sidepanel/` — React side panel (the main UI). `src/options/` — React
   options page for API keys.
+- `site/` — the static landing page for shared-thread links, built by
+  `npm run build:site` (`vite.site.config.ts`) into `site-dist/` and deployed to
+  GitHub Pages by `.github/workflows/pages.yml`. It reuses
+  `src/shared/shareSnapshot.ts`, the codec the Share button and the panel use.
 - `src/shared/` — types, message contracts, storage keys, and constants
   (`MAX_TOOL_ROUNDS`, truncation limits) used by both sides.
 - `scripts/` — standalone Node scripts (ESM), run via `node
