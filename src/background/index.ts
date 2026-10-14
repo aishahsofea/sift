@@ -1,6 +1,7 @@
 import { ASK_PORT_NAME, type AskPortRequest, type BackgroundRequest, type BackgroundResponse } from '../shared/messages'
 import { runAgentLoop } from './handlers/agentLoop'
 import { extractPage } from './handlers/extractPage'
+import { openShare } from './handlers/openShare'
 import { openQuote } from './handlers/openQuote'
 import { readSelection } from './handlers/pageSelection'
 import { clearHistory, clearTabData, getHistory, setPendingSelection } from './history/sessionHistory'
@@ -53,7 +54,7 @@ chrome.runtime.onConnect.addListener((port) => {
 })
 
 // Top level, so a revived service worker re-attaches before Chrome dispatches a queued event.
-chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse) => {
   switch (message.type) {
     case 'EXTRACT_PAGE':
       extractPage(message.tabId)
@@ -99,6 +100,10 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
         const response: BackgroundResponse = { type: 'QUOTE_OPENED' }
         sendResponse(response)
       })
+      return true
+
+    case 'SHARE_OPEN':
+      openShare(message, sender, openPanel).then(sendResponse)
       return true
 
     default:

@@ -8,7 +8,7 @@ export type ActiveTabStatus =
   | { state: 'unreadable'; reason: UnreadableReason; message: string }
 
 // The panel is tab-scoped (#14): the tab id arrives as `?tabId=` since chrome.tabs.getCurrent() fails here.
-function ownTabId(): number | null {
+export function ownTabId(): number | null {
   const raw = new URLSearchParams(window.location.search).get('tabId')
   const parsed = raw === null ? NaN : Number(raw)
   return Number.isInteger(parsed) ? parsed : null

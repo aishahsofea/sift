@@ -38,6 +38,11 @@ resilience beyond what's listed.
 > [ADR 0008](docs/adr/0008-side-panel-is-opened-per-tab-by-hand.md): the panel
 > is no longer global/persistent, so the "persistent panel" framing of gotcha
 > #2 no longer holds, even though broad `host_permissions` stays.
+>
+> The scope note below ("no distribution to other machines") no longer holds in
+> full: releases are zipped for others, and
+> [ADR 0013](docs/adr/0013-shareable-thread-links.md) adds shareable thread links
+> whose install prompt points at the GitHub release.
 
 | Area | Decision |
 |---|---|
