@@ -1,7 +1,13 @@
+import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
   root: 'site',
   base: './',
-  build: { outDir: '../site-dist', emptyOutDir: true, target: 'es2022' },
+  build: {
+    outDir: '../site-dist',
+    emptyOutDir: true,
+    target: 'es2022',
+    rollupOptions: { input: { index: resolve('site/index.html'), privacy: resolve('site/privacy.html') } },
+  },
 })
