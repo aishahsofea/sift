@@ -102,13 +102,13 @@ Then certify all three:
 | Asset | Requirement | Status |
 | --- | --- | --- |
 | Icon | 128×128 PNG | `public/icons/128.png` exists; check it isn't a placeholder |
-| Screenshots | 1 to 5, 1280×800 or 640×400 | To capture |
+| Screenshots | 1 to 5, 1280×800 or 640×400 | Three captured, see below |
 | Small promo tile | 440×280 (optional) | Optional |
 
-Suggested screenshots, each 1280×800:
+Screenshots are in `screenshots/` (1280×800 PNG). They show the real side panel
+with stubbed data over a made-up article, not a live model run. The context-menu
+shot isn't included, because Chrome's native menu can't be captured that way.
 
-1. A page answer with "from the page · N quotes checked" showing.
-2. A quote clicked and highlighted on the page.
-3. A "from the web" answer after a site search.
-4. The "Ask Sift about this selection" context menu.
-5. The options page, showing where keys go.
+1. `1-answer-from-page.png`: a page answer, "from the page · 2 quotes checked", quotes expanded.
+2. `2-quote-highlighted.png`: a quote highlighted on the page.
+3. `3-answer-from-web.png`: a "from the web" answer, with the search steps and pages read.
