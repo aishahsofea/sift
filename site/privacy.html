@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sift privacy policy</title>
+    <style>
+      :root { color-scheme: light dark; --muted: #6b7280; --line: #d1d5db; }
+      body { font: 16px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+      h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+      h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+      .muted { color: var(--muted); font-size: .9rem; }
+      code { font-size: .9em; }
+    </style>
+  </head>
+  <body>
+    <h1>Sift privacy policy</h1>
+    <p class="muted">Last updated: 14 October 2026</p>
+
+    <p>
+      Sift is a Chrome extension that answers questions about the page you're reading. It has no
+      account system and no analytics, and it doesn't show ads or sell data.
+      This page says what leaves your browser, where it goes, and what is kept.
+    </p>
+
+    <h2>What Sift reads</h2>
+    <p>
+      Sift reads the text of a page only when you ask a question about it in the side panel. It
+      extracts the readable text of the current tab, and any text you've selected, and uses it to
+      answer. It doesn't read pages in the background or when the panel is closed.
+    </p>
+
+    <h2>What is sent, and to whom</h2>
+    <ul>
+      <li>
+        <strong>Nebius Token Factory</strong> (the language model provider). Each question is sent
+        with the extracted page text, your earlier questions and answers on that page, and the
+        page's URL. This is how the answer is produced.
+      </li>
+      <li>
+        <strong>Tavily</strong> (web search). When the model decides it needs more of the same
+        site, a search query it wrote is sent, limited to the site you're on. If a result needs
+        reading in full, that result's URL is sent too.
+      </li>
+      <li>
+        <strong>Sift's demo server.</strong> If you haven't entered your own API keys, requests to
+        Nebius and Tavily go through a small server run by the Sift developer (on Cloudflare
+        Workers), which adds shared keys and forwards the request. It receives the same content
+        listed above. It doesn't store that content. It keeps only a per-day count of requests
+        for each random install ID and IP address, to enforce usage limits, and deletes counts
+        from earlier days. Cloudflare, as the host, may keep standard operational logs.
+      </li>
+    </ul>
+    <p>
+      Those providers handle the data under their own terms and privacy policies. Pages you don't
+      ask about are never sent. Avoid asking Sift about pages that hold information you don't want
+      shared with these providers, such as private documents, banking or medical pages.
+    </p>
+
+    <h2>What is stored on your device</h2>
+    <ul>
+      <li>
+        <strong>API keys</strong> you enter on the options page are kept in
+        <code>chrome.storage.local</code>, on your device. Each is sent only to the service it
+        belongs to (Nebius or Tavily).
+      </li>
+      <li>
+        <strong>A random install ID</strong>, created when you use the demo server. It isn't linked
+        to you and exists only so the demo server can count requests.
+      </li>
+      <li>
+        <strong>Conversation, extracted page text and run traces</strong> are kept in
+        <code>chrome.storage.session</code>, which Chrome clears when the browser closes. Run
+        traces hold question and answer text only if you switch that option on in the options page.
+      </li>
+    </ul>
+
+    <h2>Shared thread links</h2>
+    <p>
+      The Share button, after you confirm, copies a link that carries the thread you chose to share
+      (questions, answers, quotes and the page URL) in the part of the link after <code>#</code>.
+      That part isn't sent to any server when the link is opened. Anyone you give the link to can
+      read the thread. The link page is hosted on GitHub Pages.
+    </p>
+
+    <h2>Permissions</h2>
+    <p>
+      Sift asks for access to web pages so it can read the one you're asking about. It uses that
+      access only for that purpose. It doesn't use the data for anything unrelated to answering
+      your question, doesn't sell it, and doesn't use it to judge creditworthiness or for lending.
+    </p>
+
+    <h2>Retention and deletion</h2>
+    <p>
+      Sift keeps no server-side copy of your conversations. Remove your keys on the options page,
+      or uninstall the extension, to delete everything stored on your device.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions or requests: open an issue at
+      <a href="https://github.com/aishahsofea/sift/issues">github.com/aishahsofea/sift</a>.
+    </p>
+  </body>
+</html>
