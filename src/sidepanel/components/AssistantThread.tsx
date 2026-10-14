@@ -1,9 +1,10 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useRef, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ActionBarPrimitive, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { describeSource, explainSource } from '../sourceLabel'
 import { describeTruncatedAnswer } from '../truncationLabel'
+import { useFocusOnShow } from '../hooks/useFocusOnShow'
 import { usePendingSelection } from '../hooks/usePendingSelection'
 import type { Pending } from '../hooks/useChat'
 import { PendingIndicator } from './PendingIndicator'
@@ -188,6 +189,8 @@ export function AssistantThread({ pending, tabId, readOnly = false }: { pending:
 
 export function AssistantComposer({ tabId }: { tabId: number | null }) {
   usePendingSelection(tabId)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  useFocusOnShow(inputRef)
   return (
     <ComposerPrimitive.Root className="chat-input">
       <ComposerPrimitive.Quote className="composer-quote">
@@ -199,7 +202,7 @@ export function AssistantComposer({ tabId }: { tabId: number | null }) {
           </Icon>
         </ComposerPrimitive.QuoteDismiss>
       </ComposerPrimitive.Quote>
-      <ComposerPrimitive.Input placeholder="Ask about this page…" />
+      <ComposerPrimitive.Input ref={inputRef} placeholder="Ask about this page…" />
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
       </ThreadPrimitive.If>
